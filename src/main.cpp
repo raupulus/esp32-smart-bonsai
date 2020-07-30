@@ -9,13 +9,17 @@ const int analog4Pin = 35;
 const int analog5Pin = 32;
 const int analog6Pin = 33;
 
-// Declaro funciones para almacenar el último valor de los pines.
+// Declaro funciones para almacenar el último valor de los pines analógicos.
 float analog1LastValue = 0;
 float analog2LastValue = 0;
 float analog3LastValue = 0;
 float analog4LastValue = 0;
 float analog5LastValue = 0;
 float analog6LastValue = 0;
+
+// Declaro los pines digitales
+const int WATER_PUMP = 22;  // Bomba de agua
+const int VAPORIZER = 19;   // Vaporizador de agua
 
 // Datos del Wireless
 const char* AP_NAME = "wireless_ap_name";
@@ -157,22 +161,41 @@ void setup() {
   
   Serial.println("Conectado al Wifi con éxito");
   */
+
+  // Configuro pines digitales
+  pinMode(WATER_PUMP, OUTPUT);
+  pinMode(VAPORIZER, OUTPUT);
 }
 
 /**
  * Lee todos los sensores analógicos y los almacena.
  */ 
 void readAnalogicSensors() {
+  digitalWrite(WATER_PUMP, HIGH);
+  delay(100);
   analog1LastValue = analogRead(analog1Pin);
   delay(100);
+
+  digitalWrite(VAPORIZER, HIGH);
+  delay(100);
+
   analog2LastValue = analogRead(analog2Pin);
   delay(100);
   analog3LastValue = analogRead(analog3Pin);
   delay(100);
+
+  digitalWrite(WATER_PUMP, LOW);
+  
+  delay(100);
+  
   analog4LastValue = analogRead(analog4Pin);
   delay(100);
   analog5LastValue = analogRead(analog5Pin);
   delay(100);
+
+  digitalWrite(VAPORIZER, LOW);
+  delay(100);
+
   analog6LastValue = analogRead(analog6Pin);
   delay(100);
 }
