@@ -18,8 +18,8 @@ float analog5LastValue = 0;
 float analog6LastValue = 0;
 
 // Datos del Wireless
-const char AP_NAME = 'wireless_ap_name';
-const char AP_PASSWORD = 'mi_password';
+const char* AP_NAME = "wireless_ap_name";
+const char* AP_PASSWORD = "mi_password";
 
 void setup() {
   // Abro el puerto serial.
@@ -202,7 +202,7 @@ void uploadDataToApi() {
     Serial.println('Iniciando subida a la API');
     // TODO → Implementar acciones de subida a la API
   } else {  
-    Serial.println('No se ha conectado al WIFI, no se inicia la subida a la API')
+    Serial.println('No se ha conectado al WIFI, no se inicia la subida a la API');
   }
 }
 
