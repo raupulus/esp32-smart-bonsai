@@ -171,8 +171,6 @@ void setup() {
  * Lee todos los sensores analógicos y los almacena.
  */ 
 void readAnalogicSensors() {
-  digitalWrite(WATER_PUMP, HIGH);
-  delay(100);
   analog1LastValue = analogRead(analog1Pin);
   delay(100);
 
@@ -184,10 +182,6 @@ void readAnalogicSensors() {
   analog3LastValue = analogRead(analog3Pin);
   delay(100);
 
-  digitalWrite(WATER_PUMP, LOW);
-  
-  delay(100);
-  
   analog4LastValue = analogRead(analog4Pin);
   delay(100);
   analog5LastValue = analogRead(analog5Pin);
@@ -247,9 +241,28 @@ void uploadDataToApi() {
   }
 }
 
+/**
+ * Enciende el motor de riego solo cuando el sensor no detecta humedad.
+ */ 
+void waterPump() {
+
+  // TODO → Implementar umbral de riego en porcentaje
+
+  if (analog1LastValue > 2000) {
+    Serial.println("Encendiendo motor de riego");
+    digitalWrite(WATER_PUMP, HIGH);
+  } else {
+    Serial.println("Motor de riego apagado");
+    digitalWrite(WATER_PUMP, LOW);
+  }
+}
+
 void loop() {
   // Leo todos los pines analógicos.
   readAnalogicSensors();
+
+  // Compruebo si necesita regar
+  waterPump();
   
   // Muestro los datos por Serial.
   printResumeBySerial();
