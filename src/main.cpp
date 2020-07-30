@@ -142,15 +142,21 @@ void setup() {
   * @note At 11dB attenuation the maximum voltage is limited by VDD_A, not the full scale voltage.
   */  
 
+  delay(300);
+
   // Conectando al wifi
+  Serial.println("Conectando al WiFi..");
   WiFi.begin(AP_NAME, AP_PASSWORD);
 
+  delay(1000);
+  /*
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.println("Conectando al WiFi..");
   }
   
   Serial.println("Conectado al Wifi con éxito");
+  */
 }
 
 /**
@@ -175,18 +181,30 @@ void readAnalogicSensors() {
  * Imprime los datos de las lecturas por serial.
  */ 
 void printResumeBySerial() {
+  Serial.println();
+  Serial.println("----------------------");
+  Serial.print("36 → ");
   Serial.println(analog1LastValue);
   delay(100);
+  Serial.print("39 → ");
   Serial.println(analog2LastValue);
   delay(100);
+  Serial.print("34 → ");
   Serial.println(analog3LastValue);
   delay(100);
+  Serial.print("35 → ");
   Serial.println(analog4LastValue);
   delay(100);
+  Serial.print("32 → ");
   Serial.println(analog5LastValue);
   delay(100);
+  Serial.print("33 → ");
   Serial.println(analog6LastValue);
-  delay(100);
+  
+  Serial.println("----------------------");
+  Serial.println();
+
+  delay(1000);
 }
 
 /**
@@ -199,10 +217,10 @@ void printResumeByDisplay() {
 void uploadDataToApi() {
   // Compruebo si está conectado a la red antes de iniciar la subida.
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println('Iniciando subida a la API');
+    Serial.println("Iniciando subida a la API");
     // TODO → Implementar acciones de subida a la API
   } else {  
-    Serial.println('No se ha conectado al WIFI, no se inicia la subida a la API');
+    Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
   }
 }
 
@@ -215,4 +233,7 @@ void loop() {
 
   // Muestro los datos por pantalla.
   printResumeByDisplay();
+
+  // Subo los datos a la API
+  uploadDataToApi();
 }
