@@ -138,32 +138,56 @@ void setup() {
   */  
 }
 
+/**
+ * Lee todos los sensores analógicos y los almacena.
+ */ 
+void readAnalogicSensors() {
+  analog1LastValue = analogRead(analog1Pin);
+  delay(100);
+  analog2LastValue = analogRead(analog2Pin);
+  delay(100);
+  analog3LastValue = analogRead(analog3Pin);
+  delay(100);
+  analog4LastValue = analogRead(analog4Pin);
+  delay(100);
+  analog5LastValue = analogRead(analog5Pin);
+  delay(100);
+  analog6LastValue = analogRead(analog6Pin);
+  delay(100);
+}
+
+/**
+ * Imprime los datos de las lecturas por serial.
+ */ 
+void printResumeBySerial() {
+  Serial.println(analog1LastValue);
+  delay(100);
+  Serial.println(analog2LastValue);
+  delay(100);
+  Serial.println(analog3LastValue);
+  delay(100);
+  Serial.println(analog4LastValue);
+  delay(100);
+  Serial.println(analog5LastValue);
+  delay(100);
+  Serial.println(analog6LastValue);
+  delay(100);
+}
+
+/**
+ * Imprime los datos de las lecturas por la pantalla externa.
+ */ 
+void printResumeByDisplay() {
+
+}
 
 void loop() {
   // Leo todos los pines analógicos.
-  analog1LastValue = analogRead(analog1Pin);
-  Serial.println(analog1LastValue);
-  delay(1000);
-
-  analog1LastValue = analogRead(analog2Pin);
-  Serial.println(analog2LastValue);
-  delay(1000);
-
-  analog1LastValue = analogRead(analog3Pin);
-  Serial.println(analog3LastValue);
-  delay(1000);
-
-  analog1LastValue = analogRead(analog4Pin);
-  Serial.println(analog4LastValue);
-  delay(1000);
-
-  analog1LastValue = analogRead(analog5Pin);
-  Serial.println(analog5LastValue);
-  delay(1000);
-
-  analog1LastValue = analogRead(analog6Pin);
-  Serial.println(analog6LastValue);
-  delay(1000);
+  readAnalogicSensors();
   
-  // 
+  // Muestro los datos por Serial.
+  printResumeBySerial();
+
+  // Muestro los datos por pantalla.
+  printResumeByDisplay();
 }
