@@ -1,6 +1,23 @@
 #include <Arduino.h>
 
+// Declaro los pines analógicos.
+const int analog1Pin = 36;
+const int analog2Pin = 39;
+const int analog3Pin = 34;
+const int analog4Pin = 35;
+const int analog5Pin = 32;
+const int analog6Pin = 33;
+
+// Declaro funciones para almacenar el último valor de los pines.
+const float analog1LastValue = 0;
+const float analog2LastValue = 0;
+const float analog3LastValue = 0;
+const float analog4LastValue = 0;
+const float analog5LastValue = 0;
+const float analog6LastValue = 0;
+
 void setup() {
+  // Abro el puerto serial.
   Serial.begin(115200);
 
   /*
@@ -79,22 +96,22 @@ void setup() {
   /*
   * Attach pin to ADC (will also clear any other analog mode that could be on)
   * */
-  adcAttachPin(36);
-  adcAttachPin(39);
-  adcAttachPin(34);
-  adcAttachPin(35);
-  adcAttachPin(32);
-  adcAttachPin(33);
+  adcAttachPin(analog1Pin);
+  adcAttachPin(analog2Pin);
+  adcAttachPin(analog3Pin);
+  adcAttachPin(analog4Pin);
+  adcAttachPin(analog5Pin);
+  adcAttachPin(analog6Pin);
 
   /*
   * Start ADC conversion on attached pin's bus
   * */
-  adcStart(36);
-  adcStart(39);
-  adcStart(34);
-  adcStart(35);
-  adcStart(32);
-  adcStart(33);
+  adcStart(analog1Pin);
+  adcStart(analog2Pin);
+  adcStart(analog3Pin);
+  adcStart(analog4Pin);
+  adcStart(analog5Pin);
+  adcStart(analog6Pin);
 
   /*
   * Check if conversion on the pin's ADC bus is currently running
@@ -122,16 +139,16 @@ void setup() {
 }
 
 void loop() {
-  Serial.println(analogRead(36)); //VP
+  Serial.println(analogRead(analog1Pin)); //VP
   delay(1000);
-  Serial.println(analogRead(39)); //VP
+  Serial.println(analogRead(analog2Pin)); //VP
   delay(1000);
-  Serial.println(analogRead(34)); //VP
+  Serial.println(analogRead(analog3Pin)); //VP
   delay(1000);
-  Serial.println(analogRead(35)); //VP
+  Serial.println(analogRead(analog4Pin)); //VP
   delay(1000);
-  Serial.println(analogRead(32)); //VP
+  Serial.println(analogRead(analog5Pin)); //VP
   delay(1000);
-  Serial.println(analogRead(33)); //VP
+  Serial.println(analogRead(analog6Pin)); //VP
   delay(1000);
 }
