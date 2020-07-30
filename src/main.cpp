@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "WiFi.h"
 
 // Declaro los pines analógicos.
 const int analog1Pin = 36;
@@ -15,6 +16,10 @@ float analog3LastValue = 0;
 float analog4LastValue = 0;
 float analog5LastValue = 0;
 float analog6LastValue = 0;
+
+// Datos del Wireless
+const char AP_NAME = 'wireless_ap_name';
+const char AP_PASSWORD = 'mi_password';
 
 void setup() {
   // Abro el puerto serial.
@@ -136,6 +141,16 @@ void setup() {
   *
   * @note At 11dB attenuation the maximum voltage is limited by VDD_A, not the full scale voltage.
   */  
+
+  // Conectando al wifi
+  WiFi.begin(AP_NAME, AP_PASSWORD);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.println("Conectando al WiFi..");
+  }
+  
+  Serial.println("Conectado al Wifi con éxito");
 }
 
 /**
@@ -178,6 +193,10 @@ void printResumeBySerial() {
  * Imprime los datos de las lecturas por la pantalla externa.
  */ 
 void printResumeByDisplay() {
+
+}
+
+void uploadDataToApi() {
 
 }
 
