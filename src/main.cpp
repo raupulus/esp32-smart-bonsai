@@ -197,7 +197,13 @@ void printResumeByDisplay() {
 }
 
 void uploadDataToApi() {
-
+  // Compruebo si está conectado a la red antes de iniciar la subida.
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println('Iniciando subida a la API');
+    // TODO → Implementar acciones de subida a la API
+  } else {  
+    Serial.println('No se ha conectado al WIFI, no se inicia la subida a la API')
+  }
 }
 
 void loop() {
