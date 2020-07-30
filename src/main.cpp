@@ -9,12 +9,12 @@ const int analog5Pin = 32;
 const int analog6Pin = 33;
 
 // Declaro funciones para almacenar el último valor de los pines.
-const float analog1LastValue = 0;
-const float analog2LastValue = 0;
-const float analog3LastValue = 0;
-const float analog4LastValue = 0;
-const float analog5LastValue = 0;
-const float analog6LastValue = 0;
+float analog1LastValue = 0;
+float analog2LastValue = 0;
+float analog3LastValue = 0;
+float analog4LastValue = 0;
+float analog5LastValue = 0;
+float analog6LastValue = 0;
 
 void setup() {
   // Abro el puerto serial.
@@ -138,17 +138,32 @@ void setup() {
   */  
 }
 
+
 void loop() {
-  Serial.println(analogRead(analog1Pin)); //VP
+  // Leo todos los pines analógicos.
+  analog1LastValue = analogRead(analog1Pin);
+  Serial.println(analog1LastValue);
   delay(1000);
-  Serial.println(analogRead(analog2Pin)); //VP
+
+  analog1LastValue = analogRead(analog2Pin);
+  Serial.println(analog2LastValue);
   delay(1000);
-  Serial.println(analogRead(analog3Pin)); //VP
+
+  analog1LastValue = analogRead(analog3Pin);
+  Serial.println(analog3LastValue);
   delay(1000);
-  Serial.println(analogRead(analog4Pin)); //VP
+
+  analog1LastValue = analogRead(analog4Pin);
+  Serial.println(analog4LastValue);
   delay(1000);
-  Serial.println(analogRead(analog5Pin)); //VP
+
+  analog1LastValue = analogRead(analog5Pin);
+  Serial.println(analog5LastValue);
   delay(1000);
-  Serial.println(analogRead(analog6Pin)); //VP
+
+  analog1LastValue = analogRead(analog6Pin);
+  Serial.println(analog6LastValue);
   delay(1000);
+  
+  // 
 }
