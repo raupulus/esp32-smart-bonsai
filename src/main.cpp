@@ -323,13 +323,32 @@ void readHumidity() {
   humidity = get_humidity;
 }
 
+void readLight() {
+
+}
+
+void readClock() {
+
+}
+
+void setClock() {
+  
+}
+
 void loop() {
+  // Establezco el reloj por i2c en su fecha y hora correcta.
+  setClock();
+  
+  // Leo y almaceno timestamp de la lectura actual
+  readClock();
+
   // Leo todos los pines analógicos.
   readAnalogicSensors();
 
   // Leo pines digitales
   readTemperature();
   readHumidity();
+  readLight();
 
   // Compruebo si necesita regar.
   waterPump();
