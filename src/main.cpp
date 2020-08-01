@@ -275,6 +275,22 @@ void waterPump() {
 }
 
 /**
+ * Enciende el vaporizador de agua cuando se dan las condiciones necesarias.
+ */ 
+void vaporizer() {
+
+  if ((humidity < 65) && (temperature < 30)) {
+    delay(100);
+    digitalWrite(VAPORIZER, HIGH);
+    Serial.println("El vaporizador está apagado");
+  } else {
+    delay(100);
+    Serial.println("El vaporizador está encendido");
+    digitalWrite(VAPORIZER, LOW);
+  }
+}
+
+/**
  * Obtiene la temperatura del sensor DHT11y la asocia en la variable.
  */
 void readTemperature() {
@@ -315,8 +331,11 @@ void loop() {
   readTemperature();
   readHumidity();
 
-  // Compruebo si necesita regar
+  // Compruebo si necesita regar.
   waterPump();
+
+  // Compruebo si necesita encender el vaporizador.
+  vaporizer();
   
   // Muestro los datos por Serial.
   printResumeBySerial();
