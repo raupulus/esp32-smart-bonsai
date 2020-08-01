@@ -195,6 +195,7 @@ void readAnalogicSensors() {
   analog4LastValue = analogRead(analog4Pin);
   delay(100);
   analog5LastValue = analogRead(analog5Pin);
+  delay(100);
   analog6LastValue = analogRead(analog6Pin);
   delay(100);
 }
@@ -205,45 +206,39 @@ void readAnalogicSensors() {
 void printResumeBySerial() {
   Serial.println();
   Serial.println("----------------------");
-  Serial.print("36 → ");
+  Serial.print("Value Analog GPIO 36 → ");
   Serial.println(analog1LastValue);
   delay(100);
-  Serial.print("39 → ");
+  Serial.print("Value Analog GPIO 39 → ");
   Serial.println(analog2LastValue);
   delay(100);
-  Serial.print("34 → ");
+  Serial.print("Value Analog GPIO 34 → ");
   Serial.println(analog3LastValue);
   delay(100);
-  Serial.print("35 → ");
+  Serial.print("Value Analog GPIO 35 → ");
   Serial.println(analog4LastValue);
   delay(100);
-  Serial.print("32 → ");
+  Serial.print("Value Analog GPIO 32 → ");
   Serial.println(analog5LastValue);
   delay(100);
-  Serial.print("33 → ");
+  Serial.print("Value Analog GPIO 33 → ");
   Serial.println(analog6LastValue);
 
   // Temperatura
-  Serial.print(F("%  Temperature: "));
+  Serial.print(F("Temperature → "));
   Serial.print(temperature);
-  Serial.print(F("°C "));
-  Serial.println();
+  Serial.println(F("°C "));
 
   // Humedad
-  Serial.print(F("%  Humidity: "));
+  Serial.print(F("Humidity → "));
   Serial.print(humidity);
-  Serial.print(F("% "));
-  Serial.println();
+  Serial.println(F("% "));
 
   // Luz - UV
-  Serial.print(F("%  UV: "));
-  Serial.print(uv);
-  Serial.print(F("% "));
-  Serial.println();
-  Serial.print(F("%  Indice UV: "));
-  Serial.print(uv_index);
-  Serial.print(F("% "));
-  Serial.println();
+  Serial.print(F("UV → "));
+  Serial.println(uv);
+  Serial.print(F("Index UV → "));
+  Serial.println(uv_index);
   
   Serial.println("----------------------");
   Serial.println();
