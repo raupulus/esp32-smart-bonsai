@@ -2,10 +2,16 @@
 #include "WiFi.h"
 #include "DHT.h"
 
-// Pin usado para el sensor de temperatura y humedad DHT
+// Pin usado para el sensor de temperatura y humedad DHT.
 #define DHTPIN 23
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
+
+// Declaro variables de sensores.
+float temperature = 0.0;
+float humidity = 0.0;
+float uv = 0.0;
+float uv_index = 0.0;
 
 // Declaro los pines analógicos.
 const int analog1Pin = 36;
@@ -182,23 +188,13 @@ void setup() {
 void readAnalogicSensors() {
   analog1LastValue = analogRead(analog1Pin);
   delay(100);
-
-  //digitalWrite(VAPORIZER, HIGH);
-  delay(100);
-
   analog2LastValue = analogRead(analog2Pin);
   delay(100);
   analog3LastValue = analogRead(analog3Pin);
   delay(100);
-
   analog4LastValue = analogRead(analog4Pin);
   delay(100);
   analog5LastValue = analogRead(analog5Pin);
-  delay(100);
-
-  //digitalWrite(VAPORIZER, LOW);
-  delay(100);
-
   analog6LastValue = analogRead(analog6Pin);
   delay(100);
 }
@@ -226,6 +222,18 @@ void printResumeBySerial() {
   delay(100);
   Serial.print("33 → ");
   Serial.println(analog6LastValue);
+
+  // Temperatura
+  Serial.println(F("%  Temperature: "));
+  Serial.print(temperature);
+  Serial.print(F("°C "));
+  Serial.println();
+
+  // Humedad
+  Serial.println(F("%  Humidity: "));
+  Serial.print(humidity);
+  Serial.print(F("% "));
+  Serial.println();
   
   Serial.println("----------------------");
   Serial.println();
@@ -266,37 +274,37 @@ void waterPump() {
   }
 }
 
-void temperature() {
+/**
+ * Obtiene la temperatura del sensor DHT11y la asocia en la variable.
+ */
+void readTemperature() {
   delay(250);
-  float t = dht.readTemperature();
+  float get_temperature = dht.readTemperature();
 
   // Check if any reads failed and exit early (to try again).
-  if (isnan(t)) {
+  if (isnan(get_temperature)) {
     Serial.println(F("Fallo al leer temperatura del sensor DHT11!"));
     return;
   }
 
-  Serial.println(F("%  Temperature: "));
-  Serial.print(t);
-  Serial.print(F("°C "));
-  Serial.println();
+  temperature = get_temperature;
 }
 
-void humidity() {
+/**
+ * Obtiene la humedad del sensor DHT11y la asocia en la variable.
+ */
+void readHumidity() {
   delay(250);
 
-  float h = dht.readHumidity();
+  float get_humidity = dht.readHumidity();
 
   // Check if any reads failed and exit early (to try again).
-  if (isnan(h)) {
+  if (isnan(get_humidity)) {
     Serial.println(F("Fallo al leer humedad del sensor DHT11!"));
     return;
   }
 
-  Serial.println(F("%  Humidity: "));
-  Serial.print(h);
-  Serial.print(F("% "));
-  Serial.println();
+  humidity = get_humidity;
 }
 
 void loop() {
