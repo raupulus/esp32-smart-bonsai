@@ -1,5 +1,11 @@
 #include <Arduino.h>
 #include "WiFi.h"
+#include "DHT.h"
+
+// Pin usado para el sensor de temperatura y humedad DHT
+#define DHTPIN 23
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
 
 // Declaro los pines analógicos.
 const int analog1Pin = 36;
@@ -165,6 +171,9 @@ void setup() {
   // Configuro pines digitales
   pinMode(WATER_PUMP, OUTPUT);
   pinMode(VAPORIZER, OUTPUT);
+
+  // Inicializo la lectura del sensor DHT11
+  dht.begin();
 }
 
 /**
@@ -174,7 +183,7 @@ void readAnalogicSensors() {
   analog1LastValue = analogRead(analog1Pin);
   delay(100);
 
-  digitalWrite(VAPORIZER, HIGH);
+  //digitalWrite(VAPORIZER, HIGH);
   delay(100);
 
   analog2LastValue = analogRead(analog2Pin);
@@ -187,7 +196,7 @@ void readAnalogicSensors() {
   analog5LastValue = analogRead(analog5Pin);
   delay(100);
 
-  digitalWrite(VAPORIZER, LOW);
+  //digitalWrite(VAPORIZER, LOW);
   delay(100);
 
   analog6LastValue = analogRead(analog6Pin);
@@ -248,18 +257,55 @@ void waterPump() {
 
   // TODO → Implementar umbral de riego en porcentaje
 
-  if (analog1LastValue > 2000) {
-    Serial.println("Encendiendo motor de riego");
+  if (analog1LastValue > 1000) {
     digitalWrite(WATER_PUMP, HIGH);
-  } else {
     Serial.println("Motor de riego apagado");
+  } else {
+    Serial.println("Encendiendo motor de riego");
     digitalWrite(WATER_PUMP, LOW);
   }
+}
+
+void temperature() {
+  delay(250);
+  float t = dht.readTemperature();
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(t)) {
+    Serial.println(F("Fallo al leer temperatura del sensor DHT11!"));
+    return;
+  }
+
+  Serial.println(F("%  Temperature: "));
+  Serial.print(t);
+  Serial.print(F("°C "));
+  Serial.println();
+}
+
+void humidity() {
+  delay(250);
+
+  float h = dht.readHumidity();
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h)) {
+    Serial.println(F("Fallo al leer humedad del sensor DHT11!"));
+    return;
+  }
+
+  Serial.println(F("%  Humidity: "));
+  Serial.print(h);
+  Serial.print(F("% "));
+  Serial.println();
 }
 
 void loop() {
   // Leo todos los pines analógicos.
   readAnalogicSensors();
+
+  // Leo pines digitales
+  temperature();
+  humidity();
 
   // Compruebo si necesita regar
   waterPump();
