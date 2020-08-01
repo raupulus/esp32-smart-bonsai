@@ -224,21 +224,31 @@ void printResumeBySerial() {
   Serial.println(analog6LastValue);
 
   // Temperatura
-  Serial.println(F("%  Temperature: "));
+  Serial.print(F("%  Temperature: "));
   Serial.print(temperature);
   Serial.print(F("°C "));
   Serial.println();
 
   // Humedad
-  Serial.println(F("%  Humidity: "));
+  Serial.print(F("%  Humidity: "));
   Serial.print(humidity);
+  Serial.print(F("% "));
+  Serial.println();
+
+  // Luz - UV
+  Serial.print(F("%  UV: "));
+  Serial.print(uv);
+  Serial.print(F("% "));
+  Serial.println();
+  Serial.print(F("%  Indice UV: "));
+  Serial.print(uv_index);
   Serial.print(F("% "));
   Serial.println();
   
   Serial.println("----------------------");
   Serial.println();
 
-  delay(1000);
+  delay(3000);
 }
 
 /**
