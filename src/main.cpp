@@ -312,8 +312,8 @@ void loop() {
   readAnalogicSensors();
 
   // Leo pines digitales
-  temperature();
-  humidity();
+  readTemperature();
+  readHumidity();
 
   // Compruebo si necesita regar
   waterPump();
