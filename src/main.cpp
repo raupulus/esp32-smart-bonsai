@@ -2,15 +2,23 @@
 #include "WiFi.h"
 #include "DHT.h"
 
+#include <Wire.h>
+#include "Adafruit_VEML6070.h"
+#include <driver/i2c.h>
+
+// Pantalla OLED ssd1306
+#include <Adafruit_SSD1306.h>
+
+
 // Pin usado para el sensor de temperatura y humedad DHT.
-#define DHTPIN 23
+#define DHTPIN 18
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
 // Declaro variables de sensores.
 float temperature = 0.0;
 float humidity = 0.0;
-float uv = 0.0;
+float uv_quantity = 0.0;
 float uv_index = 0.0;
 
 // Declaro los pines analógicos.
@@ -30,16 +38,61 @@ float analog5LastValue = 0;
 float analog6LastValue = 0;
 
 // Declaro los pines digitales
-const int WATER_PUMP = 22;  // Bomba de agua
-const int VAPORIZER = 19;   // Vaporizador de agua
+const int WATER_PUMP = 13;  // Bomba de agua
+const int VAPORIZER = 15;   // Vaporizador de agua
 
 // Datos del Wireless
 const char* AP_NAME = "wireless_ap_name";
 const char* AP_PASSWORD = "mi_password";
 
+// Instancio sensor para rayos UV
+Adafruit_VEML6070 uv = Adafruit_VEML6070();
+
+// Instancio pantalla ssd1306
+#define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+#define NUMFLAKES     10 // Number of snowflakes in the animation example
+
+#define LOGO_HEIGHT   16
+#define LOGO_WIDTH    16
+static const unsigned char PROGMEM logo_bmp[] =
+{ B00000000, B11000000,
+  B00000001, B11000000,
+  B00000001, B11000000,
+  B00000011, B11100000,
+  B11110011, B11100000,
+  B11111110, B11111000,
+  B01111110, B11111111,
+  B00110011, B10011111,
+  B00011111, B11111100,
+  B00001101, B01110000,
+  B00011011, B10100000,
+  B00111111, B11100000,
+  B00111111, B11110000,
+  B01111100, B11110000,
+  B01110000, B01110000,
+  B00000000, B00110000 };
+
+
+
+// Pines para i2c
+const int I2C_SDA_PIN = 19;
+const int I2C_SCL_PIN = 23;
+
+
+
 void setup() {
   // Abro el puerto serial.
   Serial.begin(115200);
+
+  // Establezco salida i2c personalizada.
+  Wire.begin( I2C_SDA_PIN, I2C_SCL_PIN, 1000000 );
+
+  display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
 
   /*
   * Get ADC value for pin
@@ -180,6 +233,25 @@ void setup() {
 
   // Inicializo la lectura del sensor DHT11
   dht.begin();
+
+  // Inicializo la lectura del sensor VEML6070
+  uv.begin(VEML6070_1_T);
+
+
+  // Inicializo pantalla oled ssd1306
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+
+  // Show initial display buffer contents on the screen --
+  // the library initializes this with an Adafruit splash screen.
+  display.display();
+  delay(2000);
+  // display.display() is NOT necessary after every single drawing command,
+  // unless that's what you want...rather, you can batch up a bunch of
+  // drawing operations and then update the screen all at once by calling
+  // display.display(). These examples demonstrate both approaches...
 }
 
 /**
@@ -236,7 +308,7 @@ void printResumeBySerial() {
 
   // Luz - UV
   Serial.print(F("UV → "));
-  Serial.println(uv);
+  Serial.println(uv_quantity);
   Serial.print(F("Index UV → "));
   Serial.println(uv_index);
   
@@ -251,6 +323,66 @@ void printResumeBySerial() {
  */ 
 void printResumeByDisplay() {
 
+  Serial.println("Probando pantalla\n");
+
+  int16_t i;
+
+  display.clearDisplay(); // Clear display buffer
+
+  for(i=0; i<display.width(); i+=4) {
+    display.drawLine(0, 0, i, display.height()-1, SSD1306_WHITE);
+    display.display(); // Update screen with each newly-drawn line
+    delay(1);
+  }
+  for(i=0; i<display.height(); i+=4) {
+    display.drawLine(0, 0, display.width()-1, i, SSD1306_WHITE);
+    display.display();
+    delay(1);
+  }
+  delay(250);
+
+  display.clearDisplay();
+
+  for(i=0; i<display.width(); i+=4) {
+    display.drawLine(0, display.height()-1, i, 0, SSD1306_WHITE);
+    display.display();
+    delay(1);
+  }
+  for(i=display.height()-1; i>=0; i-=4) {
+    display.drawLine(0, display.height()-1, display.width()-1, i, SSD1306_WHITE);
+    display.display();
+    delay(1);
+  }
+  delay(250);
+
+  display.clearDisplay();
+
+  for(i=display.width()-1; i>=0; i-=4) {
+    display.drawLine(display.width()-1, display.height()-1, i, 0, SSD1306_WHITE);
+    display.display();
+    delay(1);
+  }
+  for(i=display.height()-1; i>=0; i-=4) {
+    display.drawLine(display.width()-1, display.height()-1, 0, i, SSD1306_WHITE);
+    display.display();
+    delay(1);
+  }
+  delay(250);
+
+  display.clearDisplay();
+
+  for(i=0; i<display.height(); i+=4) {
+    display.drawLine(display.width()-1, 0, 0, i, SSD1306_WHITE);
+    display.display();
+    delay(1);
+  }
+  for(i=0; i<display.width(); i+=4) {
+    display.drawLine(display.width()-1, 0, i, display.height()-1, SSD1306_WHITE);
+    display.display();
+    delay(1);
+  }
+
+  delay(2000); // Pause for 2 seconds
 }
 
 void uploadDataToApi() {
@@ -270,12 +402,12 @@ void waterPump() {
 
   // TODO → Implementar umbral de riego en porcentaje
 
-  if (analog1LastValue > 1000) {
+  if (analog1LastValue < 1000) {
     digitalWrite(WATER_PUMP, HIGH);
-    Serial.println("Motor de riego apagado");
-  } else {
     Serial.println("Encendiendo motor de riego");
+  } else {
     digitalWrite(WATER_PUMP, LOW);
+    Serial.println("Motor de riego apagado");
   }
 }
 
@@ -312,7 +444,7 @@ void readTemperature() {
 }
 
 /**
- * Obtiene la humedad del sensor DHT11y la asocia en la variable.
+ * Obtiene la humedad del sensor DHT11 y la asocia en la variable.
  */
 void readHumidity() {
   delay(250);
@@ -329,7 +461,9 @@ void readHumidity() {
 }
 
 void readLight() {
-
+  Serial.print("UV light level: "); 
+  Serial.println(uv.readUV());
+  uv_quantity = uv.readUV();
 }
 
 void readClock() {
@@ -338,6 +472,39 @@ void readClock() {
 
 void setClock() {
   
+}
+
+void scanI2cSensors() {
+  byte error, address;
+  int nDevices;
+  Serial.println("Scanning...");
+  nDevices = 0;
+  for(address = 1; address < 127; address++ ) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.print("I2C device found at address 0x");
+      if (address<16) {
+        Serial.print("0");
+      }
+      Serial.println(address,HEX);
+      nDevices++;
+    }
+    else if (error==4) {
+      Serial.print("Unknow error at address 0x");
+      if (address<16) {
+        Serial.print("0");
+      }
+      Serial.println(address,HEX);
+    }    
+  }
+  if (nDevices == 0) {
+    Serial.println("No I2C devices found\n");
+  }
+  else {
+    Serial.println("done\n");
+  }
+  delay(2000);
 }
 
 void loop() {
@@ -369,4 +536,7 @@ void loop() {
 
   // Subo los datos a la API
   uploadDataToApi();
+
+  // DEBUG
+  scanI2cSensors();
 }
