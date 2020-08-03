@@ -95,25 +95,20 @@ void setup() {
   display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
 
   /*
-  * Get ADC value for pin
-  * */
-  //analogRead(36);
-  
-  /*
   * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4096).
   * If between 9 and 12, it will equal the set hardware resolution, else value will be shifted.
   * Range is 1 - 16
   *
   * Note: compatibility with Arduino SAM
   */
-  //analogReadResolution(12);
+  analogReadResolution(10);
 
   /*
   * Sets the sample bits and read resolution
   * Default is 12bit (0 - 4095)
   * Range is 9 - 12
   * */
-  analogSetWidth(12);
+  analogSetWidth(10);
 
   /*
   * Set number of cycles per sample
@@ -151,6 +146,16 @@ void setup() {
   * Default is 11db
   * */
   //analogSetPinAttenuation(36, ADC_0db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
+
+  // Establezco atenuación de 1,1v para los sensores chirp 1.2
+  //analogSetPinAttenuation(analog1Pin, ADC_0db);
+  //analogSetPinAttenuation(analog2Pin, ADC_0db);
+  //analogSetPinAttenuation(analog3Pin, ADC_0db);
+
+  // Establezco atenuación para el resto de los sensores a 3,9v
+  //analogSetPinAttenuation(analog4Pin, ADC_11db);
+  //analogSetPinAttenuation(analog5Pin, ADC_11db);
+  //analogSetPinAttenuation(analog6Pin, ADC_11db);
 
   /*
   * Get value for HALL sensor (without LNA)
@@ -532,11 +537,11 @@ void loop() {
   printResumeBySerial();
 
   // Muestro los datos por pantalla.
-  printResumeByDisplay();
+  //printResumeByDisplay();
 
   // Subo los datos a la API
-  uploadDataToApi();
+  //uploadDataToApi();
 
   // DEBUG
-  scanI2cSensors();
+  //scanI2cSensors();
 }
