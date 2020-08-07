@@ -628,7 +628,7 @@ void waterPump() {
 
   // TODO → Implementar umbral de riego en porcentaje
 
-  if (analog1LastValue > 3400) {
+  if (analog1LastValue > 3000) {
     digitalWrite(WATER_PUMP, HIGH);
     Serial.println("Encendiendo motor de riego");
     waterPump_status = true;
@@ -646,14 +646,14 @@ void vaporizer() {
 
   if ((humidity < 65) && (temperature < 30)) {
     delay(100);
+    Serial.println("El vaporizador está encendido");
     digitalWrite(VAPORIZER, HIGH);
-    Serial.println("El vaporizador está apagado");
-    vaporizer_status = false;
+    vaporizer_status = true;
   } else {
     delay(100);
-    Serial.println("El vaporizador está encendido");
+    Serial.println("El vaporizador está apagado");
     digitalWrite(VAPORIZER, LOW);
-    vaporizer_status = true;
+    vaporizer_status = false;
   }
 }
 
