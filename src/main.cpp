@@ -20,6 +20,8 @@ float temperature = 0.0;
 float humidity = 0.0;
 float uv_quantity = 0.0;
 float uv_index = 0.0;
+boolean waterPump_status = false;
+boolean vaporizer_status = false;
 
 // Declaro los pines analógicos.
 const int analog1Pin = 36;
@@ -504,6 +506,14 @@ void printResumeBySerial() {
   Serial.print(F("UV → "));
   Serial.println(uv_quantity);
 
+// Bomba de agua
+  Serial.print(F("Bomba de agua → "));
+  Serial.println(waterPump_status ? "on" : "off");
+
+  // Vaporizador
+  Serial.print(F("Vaporizador → "));
+  Serial.println(vaporizer_status ? "on" : "off");
+
   
   Serial.println("----------------------");
   Serial.println();
@@ -559,7 +569,7 @@ void printResumeByDisplay() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
-  display.setCursor(20,0);
+  display.setCursor(23,0);
   display.println("ULTIMA LECTURA");
 
   // Pines Analógicos
@@ -590,6 +600,14 @@ void printResumeByDisplay() {
   display.print(F("UV: "));
   display.println((int)uv_quantity);
 
+  // Bomba de agua
+  display.print(F("Water: "));
+  display.print(waterPump_status ? "on" : "off");
+
+  // Vaporizador
+  display.print(F(" Vap: "));
+  display.println(vaporizer_status ? "on" : "off");
+
   display.display();
 }
 
@@ -610,12 +628,14 @@ void waterPump() {
 
   // TODO → Implementar umbral de riego en porcentaje
 
-  if (analog1LastValue < 1000) {
+  if (analog1LastValue > 3400) {
     digitalWrite(WATER_PUMP, HIGH);
     Serial.println("Encendiendo motor de riego");
+    waterPump_status = true;
   } else {
     digitalWrite(WATER_PUMP, LOW);
     Serial.println("Motor de riego apagado");
+    waterPump_status = false;
   }
 }
 
@@ -628,10 +648,12 @@ void vaporizer() {
     delay(100);
     digitalWrite(VAPORIZER, HIGH);
     Serial.println("El vaporizador está apagado");
+    vaporizer_status = false;
   } else {
     delay(100);
     Serial.println("El vaporizador está encendido");
     digitalWrite(VAPORIZER, LOW);
+    vaporizer_status = true;
   }
 }
 
