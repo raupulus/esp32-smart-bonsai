@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <string>
 #include "WiFi.h"
 #include "DHT.h"
 
@@ -9,6 +10,9 @@
 // Pantalla OLED ssd1306
 #include <Adafruit_SSD1306.h>
 
+// Módulo reloj RTC DS1307
+#define DS3231_I2C_ADDRESS 0x68
+//#define DS3231_I2C_ADDRESS 0x50
 
 // Pin usado para el sensor de temperatura y humedad DHT.
 #define DHTPIN 18
@@ -272,14 +276,142 @@ const unsigned char logo3 [] PROGMEM=
 const int I2C_SDA_PIN = 19;
 const int I2C_SCL_PIN = 23;
 
+// Convert normal decimal numbers to binary coded decimal
+byte decToBcd(byte val){
+  return( (val/10*16) + (val%10) );
+}
+// Convert binary coded decimal to normal decimal numbers
+byte bcdToDec(byte val){
+  return( (val/16*10) + (val%16) );
+}
 
+/**
+ * Establece timestamp en el módulo RTC DS3231.
+ */
+bool setClock(byte second, byte minute, byte hour, byte dayOfWeek, byte
+dayOfMonth, byte month, byte year){
+
+  Serial.println("Estableciendo fecha en reloj");
+
+  /*
+  // sets time and date data to DS3231
+  Wire.beginTransmission(DS3231_I2C_ADDRESS);
+  Wire.write(0); // set next input to start at the seconds register
+  Wire.write(decToBcd(second)); // set seconds
+  Wire.write(decToBcd(minute)); // set minutes
+  Wire.write(decToBcd(hour)); // set hours
+  Wire.write(decToBcd(dayOfWeek)); // set day of week (1=Sunday, 7=Saturday)
+  Wire.write(decToBcd(dayOfMonth)); // set date (1 to 31)
+  Wire.write(decToBcd(month)); // set month
+  Wire.write(decToBcd(year)); // set year (0 to 99)
+  Wire.endTransmission();
+  */
+
+  // Escribir la dirección del registro segundero
+  Wire.write(0x00);
+
+  // Escribir valores en los registros, nos aseguramos que el bit clock halt
+  // en el registro del segundero este desactivado (esto hace que el reloj funcione)
+  Wire.write(decToBcd(second & 0x7F)); // <--- Esto hace que el reloj comience a trabajar
+  Wire.write(decToBcd(minute));
+  Wire.write(decToBcd(hour));
+  Wire.write(decToBcd(dayOfWeek));
+  Wire.write(decToBcd(dayOfMonth));
+  Wire.write(decToBcd(month));
+  Wire.write(decToBcd(year));
+
+  // Terminamos la escritura y verificamos si el DS1307 respondio
+  // Si la escritura se llevo a cabo el metodo endTransmission retorna 0
+  if (Wire.endTransmission() != 0)
+    return false;
+
+  // Retornar verdadero si se escribio con exito
+  return true;
+}
+
+// Lee el módulo RTC DS1307 (RELOJ)
+void readDS3231time(byte *second,
+byte *minute,
+byte *hour,
+byte *dayOfWeek,
+byte *dayOfMonth,
+byte *month,
+byte *year) {
+  Wire.beginTransmission(DS3231_I2C_ADDRESS);
+  Wire.write(0); // set DS3231 register pointer to 00h
+  Wire.endTransmission();
+  Wire.requestFrom(DS3231_I2C_ADDRESS, 7);
+  // request seven bytes of data from DS3231 starting from register 00h
+  *second = bcdToDec(Wire.read() & 0x7f);
+  *minute = bcdToDec(Wire.read());
+  *hour = bcdToDec(Wire.read() & 0x3f);
+  *dayOfWeek = bcdToDec(Wire.read());
+  *dayOfMonth = bcdToDec(Wire.read());
+  *month = bcdToDec(Wire.read());
+  *year = bcdToDec(Wire.read());
+
+
+}
+
+// Muestra datos por consola del módulo RTC DS1307 (RELOJ)
+void readClock(){
+  byte second, minute, hour, dayOfWeek, dayOfMonth, month, year;
+  // retrieve data from DS3231
+  readDS3231time(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month,
+  &year);
+  // send it to the serial monitor
+  Serial.print(hour, DEC);
+  // convert the byte variable to a decimal number when displayed
+  Serial.print(":");
+  if (minute<10){
+    Serial.print("0");
+  }
+  Serial.print(minute, DEC);
+  Serial.print(":");
+  if (second<10){
+    Serial.print("0");
+  }
+  Serial.print(second, DEC);
+  Serial.print(" ");
+  Serial.print(dayOfMonth, DEC);
+  Serial.print("/");
+  Serial.print(month, DEC);
+  Serial.print("/");
+  Serial.print(year, DEC);
+  Serial.print(" Día de la semana: ");
+  switch(dayOfWeek){
+  case 1:
+    Serial.println("Domingo");
+    break;
+  case 2:
+    Serial.println("Lunes");
+    break;
+  case 3:
+    Serial.println("Martes");
+    break;
+  case 4:
+    Serial.println("Miércoles");
+    break;
+  case 5:
+    Serial.println("Jueves");
+    break;
+  case 6:
+    Serial.println("Viernes");
+    break;
+  case 7:
+    Serial.println("Sábado");
+    break;
+  }
+
+  Serial.println();
+}
 
 void setup() {
   // Abro el puerto serial.
   Serial.begin(115200);
 
   // Establezco salida i2c personalizada.
-  Wire.begin( I2C_SDA_PIN, I2C_SCL_PIN, 1000000 );
+  Wire.begin( I2C_SDA_PIN, I2C_SCL_PIN );
 
   display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
 
@@ -403,7 +535,7 @@ void setup() {
   * bit width, this value is: 4095 for 12-bits, 2047 for 11-bits, 1023 for 10-bits, 511 for 9 bits.)
   *
   * @note At 11dB attenuation the maximum voltage is limited by VDD_A, not the full scale voltage.
-  */  
+  */
 
   delay(300);
 
@@ -417,7 +549,7 @@ void setup() {
     delay(500);
     Serial.println("Conectando al WiFi..");
   }
-  
+
   Serial.println("Conectado al Wifi con éxito");
   */
 
@@ -448,11 +580,18 @@ void setup() {
   // unless that's what you want...rather, you can batch up a bunch of
   // drawing operations and then update the screen all at once by calling
   // display.display(). These examples demonstrate both approaches...
+
+
+  // RTC DS1307 (RELOJ)
+  // Setea valores del reloj: DS1307 seconds, minutes, hours, day, date, month, year
+  setClock(00,39,20,5,7,8,20);
+  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
 }
 
 /**
  * Lee todos los sensores analógicos y los almacena.
- */ 
+ */
 void readAnalogicSensors() {
   analog1LastValue = analogRead(analog1Pin);
   delay(100);
@@ -470,7 +609,7 @@ void readAnalogicSensors() {
 
 /**
  * Imprime los datos de las lecturas por serial.
- */ 
+ */
 void printResumeBySerial() {
   Serial.println();
   Serial.println("----------------------");
@@ -514,7 +653,7 @@ void printResumeBySerial() {
   Serial.print(F("Vaporizador → "));
   Serial.println(vaporizer_status ? "on" : "off");
 
-  
+
   Serial.println("----------------------");
   Serial.println();
 
@@ -523,7 +662,7 @@ void printResumeBySerial() {
 
 /**
  * Imprime los datos de las lecturas por la pantalla externa.
- */ 
+ */
 void printResumeByDisplay() {
   Serial.println("Mostrando datos por la pantalla\n");
 
@@ -616,14 +755,14 @@ void uploadDataToApi() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("Iniciando subida a la API");
     // TODO → Implementar acciones de subida a la API
-  } else {  
+  } else {
     Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
   }
 }
 
 /**
  * Enciende el motor de riego solo cuando el sensor no detecta humedad.
- */ 
+ */
 void waterPump() {
 
   // TODO → Implementar umbral de riego en porcentaje
@@ -641,7 +780,7 @@ void waterPump() {
 
 /**
  * Enciende el vaporizador de agua cuando se dan las condiciones necesarias.
- */ 
+ */
 void vaporizer() {
 
   if ((humidity < 65) && (temperature < 30)) {
@@ -691,17 +830,9 @@ void readHumidity() {
 }
 
 void readLight() {
-  Serial.print("UV light level: "); 
+  Serial.print("UV light level: ");
   Serial.println(uv.readUV());
   uv_quantity = uv.readUV();
-}
-
-void readClock() {
-
-}
-
-void setClock() {
-  
 }
 
 void scanI2cSensors() {
@@ -726,7 +857,7 @@ void scanI2cSensors() {
         Serial.print("0");
       }
       Serial.println(address,HEX);
-    }    
+    }
   }
   if (nDevices == 0) {
     Serial.println("No I2C devices found\n");
@@ -738,9 +869,6 @@ void scanI2cSensors() {
 }
 
 void loop() {
-  // Establezco el reloj por i2c en su fecha y hora correcta.
-  setClock();
-  
   // Leo y almaceno timestamp de la lectura actual
   readClock();
 
@@ -757,7 +885,7 @@ void loop() {
 
   // Compruebo si necesita encender el vaporizador.
   vaporizer();
-  
+
   // Muestro los datos por Serial.
   printResumeBySerial();
 
@@ -768,7 +896,7 @@ void loop() {
   uploadDataToApi();
 
   // DEBUG
-  //scanI2cSensors();
+  scanI2cSensors();
 
   delay(10000);
 }
