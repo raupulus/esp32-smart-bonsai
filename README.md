@@ -4,3 +4,7 @@ Proyecto para automatizar el cuidado básico de un bonsai controlando humedad am
 
 ## Dependencias platformio
 
+Las siguientes dependencias son necesarias para poder compilar el proyecto
+
+- Adafruit_SSD1306
+- Adafruit_VEML6070
