@@ -9,12 +9,13 @@ Las siguientes dependencias son necesarias para poder compilar el proyecto
 - Adafruit_SSD1306
 - Adafruit_VEML6070
 - DHT11
-- RTClib
+- ArduinoJson
 
 ## Hardware utilizado
 
 - ESP32
-- Módulo para reloj en tiempo real → DS1307 Tiny RTC
+- Módulo para reloj en tiempo real → DS1307 Tiny RTC (Como subo los datos en
+  el momento y para ahorrar gastos además de energía, marco la hora tras subir)
 - Pantalla LCD → SSD1306
 - Sensor UV → VEML6070
 - Módulo para relés
