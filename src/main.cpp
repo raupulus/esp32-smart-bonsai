@@ -1,6 +1,18 @@
 #include <Arduino.h>
 #include <string>
+
+//const bool upload_to_api = true;
+
+#include <api.cpp>
+
+#ifndef upload_to_api
+#define upload_to_api false
+#define AP_NAME ""
+#define AP_PASSWORD ""
+#endif
+
 #include "WiFi.h"
+
 #include "DHT.h"
 
 #include <Wire.h>
@@ -46,10 +58,6 @@ float analog6LastValue = 0;
 // Declaro los pines digitales
 const int WATER_PUMP = 13;  // Bomba de agua
 const int VAPORIZER = 15;   // Vaporizador de agua
-
-// Datos del Wireless
-const char* AP_NAME = "wireless_ap_name";
-const char* AP_PASSWORD = "mi_password";
 
 // Instancio sensor para rayos UV
 Adafruit_VEML6070 uv = Adafruit_VEML6070();
@@ -540,8 +548,15 @@ void setup() {
   delay(300);
 
   // Conectando al wifi
-  Serial.println("Conectando al WiFi..");
-  WiFi.begin(AP_NAME, AP_PASSWORD);
+  if (upload_to_api) {
+      Serial.println("Conectando al WiFi..");
+      WiFi.begin(AP_NAME, AP_PASSWORD);
+      delay(500);
+
+      if(WiFi.status() == WL_CONNECTED) {
+        Serial.println("Se ha conectado al wifi correctamente..");
+      } 
+  }
 
   delay(1000);
   /*
@@ -645,7 +660,13 @@ void printResumeBySerial() {
   Serial.print(F("UV → "));
   Serial.println(uv_quantity);
 
-// Bomba de agua
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WLAN → ON");
+  } else {
+    Serial.println("WLAN → OFF");
+  }
+
+  // Bomba de agua
   Serial.print(F("Bomba de agua → "));
   Serial.println(waterPump_status ? "on" : "off");
 
@@ -737,7 +758,13 @@ void printResumeByDisplay() {
 
   // Luz - UV
   display.print(F("UV: "));
-  display.println((int)uv_quantity);
+  display.print((int)uv_quantity);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    display.println(" WLAN: ON");
+  } else {
+    display.println(" WLAN: OFF");
+  }
 
   // Bomba de agua
   display.print(F("Water: "));
@@ -747,17 +774,22 @@ void printResumeByDisplay() {
   display.print(F(" Vap: "));
   display.println(vaporizer_status ? "on" : "off");
 
+  if (WiFi.status() == WL_CONNECTED) {
+    display.print("IP: ");
+    display.println(WiFi.localIP());
+  }
+
   display.display();
 }
 
 void uploadDataToApi() {
-  // Compruebo si está conectado a la red antes de iniciar la subida.
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("Iniciando subida a la API");
-    // TODO → Implementar acciones de subida a la API
-  } else {
-    Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
-  }
+    // Compruebo si está conectado a la red antes de iniciar la subida.
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("Iniciando subida a la API");
+        // TODO → Implementar acciones de subida a la API
+    } else {
+        Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
+    }
 }
 
 /**
@@ -893,7 +925,9 @@ void loop() {
   printResumeByDisplay();
 
   // Subo los datos a la API
-  uploadDataToApi();
+  if (upload_to_api) {
+    uploadDataToApi();
+  }
 
   // DEBUG
   scanI2cSensors();
