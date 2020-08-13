@@ -11,6 +11,17 @@ Las siguientes dependencias son necesarias para poder compilar el proyecto
 - DHT11
 - ArduinoJson
 
+## Entorno de variables para WIFI y API
+
+Tenemos que copiar el archivo de ejemplo **api.cpp.example** al mismo nivel
+de directorio y llamarlo simplemente **api.cpp** modificando posteriormente
+las variables privadas de acceso a nuestro router wireless personal y la api
+que tengamos en uso.
+
+En caso de no tener o no querer utilizarlo, establecer la variable 
+**upload_to_api** en **false** y las demás variables vacías tal como están en el
+archivo de ejemplo actualmente.
+
 ## Hardware utilizado
 
 - ESP32
