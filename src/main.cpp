@@ -39,6 +39,11 @@ float uv_quantity = 0.0;
 float uv_index = 0.0;
 boolean waterPump_status = false;
 boolean vaporizer_status = false;
+boolean full_water_tank = false;
+// Porcentaje de humedad en el suelo.
+float soil_humidity = 0.0;
+
+
 
 // Declaro los pines analógicos.
 const int analog1Pin = 36;
@@ -432,364 +437,375 @@ void wifiConnect() {
 }
 
 void setup() {
-  // Abro el puerto serial.
-  Serial.begin(115200);
-
-  // Establezco salida i2c personalizada.
-  Wire.begin( I2C_SDA_PIN, I2C_SCL_PIN );
-
-  display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
-
-  /*
-  * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4096).
-  * If between 9 and 12, it will equal the set hardware resolution, else value will be shifted.
-  * Range is 1 - 16
-  *
-  * Note: compatibility with Arduino SAM
-  */
-  //analogReadResolution(10);
-
-  /*
-  * Sets the sample bits and read resolution
-  * Default is 12bit (0 - 4095)
-  * Range is 9 - 12
-  * */
-  analogSetWidth(12);
-
-  /*
-  * Set number of cycles per sample
-  * Default is 8 and seems to do well
-  * Range is 1 - 255
-  * */
-  analogSetCycles(8);
-
-  /*
-  * Set number of samples in the range.
-  * Default is 1
-  * Range is 1 - 255
-  * This setting splits the range into
-  * "samples" pieces, which could look
-  * like the sensitivity has been multiplied
-  * that many times
-  * */
-  analogSetSamples(1);
-
-  /*
-  * Set the divider for the ADC clock.
-  * Default is 1
-  * Range is 1 - 255
-  * */
-  analogSetClockDiv(1);
-
-  /*
-  * Set the attenuation for all channels
-  * Default is 11db
-  * */
-  analogSetAttenuation(ADC_11db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
-
-  /*
-  * Set the attenuation for particular pin
-  * Default is 11db
-  * */
-  //analogSetPinAttenuation(36, ADC_0db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
-
-  // Establezco atenuación de 1,1v para los sensores chirp 1.2
-  //analogSetPinAttenuation(analog1Pin, ADC_0db);
-  //analogSetPinAttenuation(analog2Pin, ADC_0db);
-  //analogSetPinAttenuation(analog3Pin, ADC_0db);
-
-  // Establezco atenuación para el resto de los sensores a 3,9v
-  //analogSetPinAttenuation(analog4Pin, ADC_11db);
-  //analogSetPinAttenuation(analog5Pin, ADC_11db);
-  //analogSetPinAttenuation(analog6Pin, ADC_11db);
-
-  /*
-  * Get value for HALL sensor (without LNA)
-  * connected to pins 36(SVP) and 39(SVN)
-  * */
-  //hallRead();
-
-  /*
-  * Non-Blocking API (almost)
-  *
-  * Note: ADC conversion can run only for single pin at a time.
-  *       That means that if you want to run ADC on two pins on the same bus,
-  *       you need to run them one after another. Probably the best use would be
-  *       to start conversion on both buses in parallel.
-  * */
-
-  /*
-  * Attach pin to ADC (will also clear any other analog mode that could be on)
-  * */
-  adcAttachPin(analog1Pin);
-  adcAttachPin(analog2Pin);
-  adcAttachPin(analog3Pin);
-  adcAttachPin(analog4Pin);
-  adcAttachPin(analog5Pin);
-  adcAttachPin(analog6Pin);
-
-  /*
-  * Start ADC conversion on attached pin's bus
-  * */
-  adcStart(analog1Pin);
-  adcStart(analog2Pin);
-  adcStart(analog3Pin);
-  adcStart(analog4Pin);
-  adcStart(analog5Pin);
-  adcStart(analog6Pin);
-
-  /*
-  * Check if conversion on the pin's ADC bus is currently running
-  * */
-  //adcBusy(uint8_t pin);
-
-  /*
-  * Get the result of the conversion (will wait if it have not finished)
-  * */
-  //adcEnd(uint8_t pin);
-
-  /**
-  * When VDD_A is 3.3V:
-  *
-  * - 0dB attenuaton (ADC_ATTEN_DB_0) gives full-scale voltage 1.1V
-  * - 2.5dB attenuation (ADC_ATTEN_DB_2_5) gives full-scale voltage 1.5V
-  * - 6dB attenuation (ADC_ATTEN_DB_6) gives full-scale voltage 2.2V
-  * - 11dB attenuation (ADC_ATTEN_DB_11) gives full-scale voltage 3.9V (see note below)
-  *
-  * @note The full-scale voltage is the voltage corresponding to a maximum reading (depending on ADC1 configured
-  * bit width, this value is: 4095 for 12-bits, 2047 for 11-bits, 1023 for 10-bits, 511 for 9 bits.)
-  *
-  * @note At 11dB attenuation the maximum voltage is limited by VDD_A, not the full scale voltage.
-  */
-
-  delay(300);
-
-  // Conectando al wifi
-  wifiConnect();
-  
-
-  delay(1000);
-  /*
-  while (WiFi.status() != WL_CONNECTED) {
+    // Delay para prevenir posible cuelgue al despertar de hibernación.
     delay(500);
-    Serial.println("Conectando al WiFi..");
-  }
 
-  Serial.println("Conectado al Wifi con éxito");
-  */
+    // Abro el puerto serial.
+    Serial.begin(115200);
 
-  // Configuro pines digitales
-  pinMode(WATER_PUMP, OUTPUT);
-  pinMode(VAPORIZER, OUTPUT);
+    // Establezco salida i2c personalizada.
+    Wire.begin( I2C_SDA_PIN, I2C_SCL_PIN );
 
-  // Inicializo la lectura del sensor DHT11
-  dht.begin();
+    display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
 
-  // Inicializo la lectura del sensor VEML6070
-  uv.begin(VEML6070_1_T);
+    /*
+    * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4096).
+    * If between 9 and 12, it will equal the set hardware resolution, else value will be shifted.
+    * Range is 1 - 16
+    *
+    * Note: compatibility with Arduino SAM
+    */
+    //analogReadResolution(10);
+
+    /*
+    * Sets the sample bits and read resolution
+    * Default is 12bit (0 - 4095)
+    * Range is 9 - 12
+    * */
+    analogSetWidth(12);
+
+    /*
+    * Set number of cycles per sample
+    * Default is 8 and seems to do well
+    * Range is 1 - 255
+    * */
+    analogSetCycles(8);
+
+    /*
+    * Set number of samples in the range.
+    * Default is 1
+    * Range is 1 - 255
+    * This setting splits the range into
+    * "samples" pieces, which could look
+    * like the sensitivity has been multiplied
+    * that many times
+    * */
+    analogSetSamples(1);
+
+    /*
+    * Set the divider for the ADC clock.
+    * Default is 1
+    * Range is 1 - 255
+    * */
+    analogSetClockDiv(1);
+
+    /*
+    * Set the attenuation for all channels
+    * Default is 11db
+    * */
+    analogSetAttenuation(ADC_11db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
+
+    /*
+    * Set the attenuation for particular pin
+    * Default is 11db
+    * */
+    //analogSetPinAttenuation(36, ADC_0db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
+
+    // Establezco atenuación de 1,1v para los sensores chirp 1.2
+    //analogSetPinAttenuation(analog1Pin, ADC_0db);
+    //analogSetPinAttenuation(analog2Pin, ADC_0db);
+    //analogSetPinAttenuation(analog3Pin, ADC_0db);
+
+    // Establezco atenuación para el resto de los sensores a 3,9v
+    //analogSetPinAttenuation(analog4Pin, ADC_11db);
+    //analogSetPinAttenuation(analog5Pin, ADC_11db);
+    //analogSetPinAttenuation(analog6Pin, ADC_11db);
+
+    /*
+    * Get value for HALL sensor (without LNA)
+    * connected to pins 36(SVP) and 39(SVN)
+    * */
+    //hallRead();
+
+    /*
+    * Non-Blocking API (almost)
+    *
+    * Note: ADC conversion can run only for single pin at a time.
+    *       That means that if you want to run ADC on two pins on the same bus,
+    *       you need to run them one after another. Probably the best use would be
+    *       to start conversion on both buses in parallel.
+    * */
+
+    /*
+    * Attach pin to ADC (will also clear any other analog mode that could be on)
+    * */
+    adcAttachPin(analog1Pin);
+    adcAttachPin(analog2Pin);
+    adcAttachPin(analog3Pin);
+    adcAttachPin(analog4Pin);
+    adcAttachPin(analog5Pin);
+    adcAttachPin(analog6Pin);
+
+    /*
+    * Start ADC conversion on attached pin's bus
+    * */
+    adcStart(analog1Pin);
+    adcStart(analog2Pin);
+    adcStart(analog3Pin);
+    adcStart(analog4Pin);
+    adcStart(analog5Pin);
+    adcStart(analog6Pin);
+
+    /*
+    * Check if conversion on the pin's ADC bus is currently running
+    * */
+    //adcBusy(uint8_t pin);
+
+    /*
+    * Get the result of the conversion (will wait if it have not finished)
+    * */
+    //adcEnd(uint8_t pin);
+
+    /**
+     * When VDD_A is 3.3V:
+     *
+     * - 0dB attenuaton (ADC_ATTEN_DB_0) gives full-scale voltage 1.1V
+     * - 2.5dB attenuation (ADC_ATTEN_DB_2_5) gives full-scale voltage 1.5V
+     * - 6dB attenuation (ADC_ATTEN_DB_6) gives full-scale voltage 2.2V
+     * - 11dB attenuation (ADC_ATTEN_DB_11) gives full-scale voltage 3.9V (see note below)
+     *
+     * @note The full-scale voltage is the voltage corresponding to a maximum reading (depending on ADC1 configured
+     * bit width, this value is: 4095 for 12-bits, 2047 for 11-bits, 1023 for 10-bits, 511 for 9 bits.)
+     *
+     * @note At 11dB attenuation the maximum voltage is limited by VDD_A, not the full scale voltage.
+     */
+
+    delay(300);
+
+    // Conectando al wifi
+    wifiConnect();
+    
+    delay(1000);
+    /*
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.println("Conectando al WiFi..");
+    }
+
+    Serial.println("Conectado al Wifi con éxito");
+    */
+
+    // Configuro pines digitales
+    pinMode(WATER_PUMP, OUTPUT);
+    pinMode(VAPORIZER, OUTPUT);
+
+    delay(300);
+
+    // Inicializo la lectura del sensor DHT11
+    dht.begin();
+
+    // Inicializo la lectura del sensor VEML6070
+    uv.begin(VEML6070_1_T);
+
+    delay(300);
+
+    // Inicializo pantalla oled ssd1306
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
+        Serial.println(F("SSD1306 allocation failed"));
+        for(;;); // Don't proceed, loop forever
+    }
+    display.clearDisplay();
+    display.cp437(true);  // Para activar carácteres raros en ASCII https://elcodigoascii.com.ar/
+
+    // Show initial display buffer contents on the screen --
+    // the library initializes this with an Adafruit splash screen.
+    //display.display();
+    //delay(2000);
+    // display.display() is NOT necessary after every single drawing command,
+    // unless that's what you want...rather, you can batch up a bunch of
+    // drawing operations and then update the screen all at once by calling
+    // display.display(). These examples demonstrate both approaches...
 
 
-  // Inicializo pantalla oled ssd1306
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
-  }
-  display.clearDisplay();
-  display.cp437(true);  // Para activar carácteres raros en ASCII https://elcodigoascii.com.ar/
-
-  // Show initial display buffer contents on the screen --
-  // the library initializes this with an Adafruit splash screen.
-  //display.display();
-  //delay(2000);
-  // display.display() is NOT necessary after every single drawing command,
-  // unless that's what you want...rather, you can batch up a bunch of
-  // drawing operations and then update the screen all at once by calling
-  // display.display(). These examples demonstrate both approaches...
-
-
-  // RTC DS1307 (RELOJ)
-  // Setea valores del reloj: DS1307 seconds, minutes, hours, day, date, month, year
-  setClock(00,39,20,5,7,8,20);
-  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
+    // RTC DS1307 (RELOJ)
+    // Setea valores del reloj: DS1307 seconds, minutes, hours, day, date, month, year
+    //setClock(00,39,20,5,7,8,20);
+    //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 }
 
 /**
  * Lee todos los sensores analógicos y los almacena.
  */
 void readAnalogicSensors() {
-  analog1LastValue = analogRead(analog1Pin);
-  delay(100);
-  analog2LastValue = analogRead(analog2Pin);
-  delay(100);
-  analog3LastValue = analogRead(analog3Pin);
-  delay(100);
-  analog4LastValue = analogRead(analog4Pin);
-  delay(100);
-  analog5LastValue = analogRead(analog5Pin);
-  delay(100);
-  analog6LastValue = analogRead(analog6Pin);
-  delay(100);
+    // Sensor para la humedad de la tierra.
+    analog1LastValue = analogRead(analog1Pin);
+
+    // Almaceno el porcentaje de humedad en la tierra
+    soil_humidity = analog1LastValue / (4095/100);
+    
+    delay(100);
+    
+    analog2LastValue = analogRead(analog2Pin);
+
+    delay(100);
+    //analog3LastValue = analogRead(analog3Pin);
+    //delay(100);
+    //analog4LastValue = analogRead(analog4Pin);
+    //delay(100);
+    //analog5LastValue = analogRead(analog5Pin);
+    //delay(100);
+    //analog6LastValue = analogRead(analog6Pin);
+    //delay(100);
 }
 
 /**
  * Imprime los datos de las lecturas por serial.
  */
 void printResumeBySerial() {
-  Serial.println();
-  Serial.println("----------------------");
-  Serial.print("Value Analog GPIO 36 → ");
-  Serial.println(analog1LastValue);
-  delay(100);
-  Serial.print("Value Analog GPIO 39 → ");
-  Serial.println(analog2LastValue);
-  delay(100);
-  Serial.print("Value Analog GPIO 34 → ");
-  Serial.println(analog3LastValue);
-  delay(100);
-  Serial.print("Value Analog GPIO 35 → ");
-  Serial.println(analog4LastValue);
-  delay(100);
-  Serial.print("Value Analog GPIO 32 → ");
-  Serial.println(analog5LastValue);
-  delay(100);
-  Serial.print("Value Analog GPIO 33 → ");
-  Serial.println(analog6LastValue);
+    Serial.println();
+    Serial.println("----------------------");
+    Serial.print("Value Analog GPIO 36 → ");
+    Serial.println(analog1LastValue);
+    delay(100);
+    Serial.print("Value Analog GPIO 39 → ");
+    Serial.println(analog2LastValue);
+    delay(100);
+    Serial.print("Value Analog GPIO 34 → ");
+    Serial.println(analog3LastValue);
+    delay(100);
+    Serial.print("Value Analog GPIO 35 → ");
+    Serial.println(analog4LastValue);
+    delay(100);
+    Serial.print("Value Analog GPIO 32 → ");
+    Serial.println(analog5LastValue);
+    delay(100);
+    Serial.print("Value Analog GPIO 33 → ");
+    Serial.println(analog6LastValue);
 
-  // Temperatura
-  Serial.print(F("Temperature → "));
-  Serial.print(temperature);
-  Serial.println(F("°C "));
+    // Temperatura
+    Serial.print(F("Temperature → "));
+    Serial.print(temperature);
+    Serial.println(F("°C "));
 
-  // Humedad
-  Serial.print(F("Humidity → "));
-  Serial.print(humidity);
-  Serial.println(F("% "));
+    // Humedad
+    Serial.print(F("Humidity → "));
+    Serial.print(humidity);
+    Serial.println(F("% "));
 
-  // Luz - UV
-  Serial.print(F("UV → "));
-  Serial.println(uv_quantity);
+    // Luz - UV
+    Serial.print(F("UV → "));
+    Serial.println(uv_quantity);
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("WLAN → ON");
-  } else {
-    Serial.println("WLAN → OFF");
-  }
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WLAN → ON");
+    } else {
+        Serial.println("WLAN → OFF");
+    }
 
-  // Bomba de agua
-  Serial.print(F("Bomba de agua → "));
-  Serial.println(waterPump_status ? "on" : "off");
+    // Bomba de agua
+    Serial.print(F("Bomba de agua → "));
+    Serial.println(waterPump_status ? "on" : "off");
 
-  // Vaporizador
-  Serial.print(F("Vaporizador → "));
-  Serial.println(vaporizer_status ? "on" : "off");
+    // Vaporizador
+    Serial.print(F("Vaporizador → "));
+    Serial.println(vaporizer_status ? "on" : "off");
 
 
-  Serial.println("----------------------");
-  Serial.println();
+    Serial.println("----------------------");
+    Serial.println();
 
-  delay(3000);
+    delay(3000);
 }
 
 /**
  * Imprime los datos de las lecturas por la pantalla externa.
  */
 void printResumeByDisplay() {
-  Serial.println("Mostrando datos por la pantalla\n");
+    Serial.println("Mostrando datos por la pantalla\n");
 
-  // Limpio el buffer de la pantalla.
-  display.clearDisplay();
+    // Limpio el buffer de la pantalla.
+    display.clearDisplay();
 
-  /*
-  display.setTextSize(1);                  // setTextSize applique est facteur d'échelle qui permet d'agrandir ou réduire la font
-  display.setTextColor(WHITE);             // La couleur du texte
-  display.setCursor(0,0);                  // On va écrire en x=0, y=0
-  display.println("Hello, world!");        // un println comme pour écrire sur le port série
-  display.setTextColor(BLACK, WHITE);      // On inverse les couleurs, le fond devient noir
-  display.println("Hello, world!");        // Vous pouvez changer à la volée de Font (pour cela vous devez la déclarer comme une librairie en début de projet, par exemple #include <Fonts/FreeMono9pt7b.h>)
-  //display.setFont(&FreeMono9pt7b);
-  display.setTextColor(WHITE);
+    /*
+    display.setTextSize(1);                  // setTextSize applique est facteur d'échelle qui permet d'agrandir ou réduire la font
+    display.setTextColor(WHITE);             // La couleur du texte
+    display.setCursor(0,0);                  // On va écrire en x=0, y=0
+    display.println("Hello, world!");        // un println comme pour écrire sur le port série
+    display.setTextColor(BLACK, WHITE);      // On inverse les couleurs, le fond devient noir
+    display.println("Hello, world!");        // Vous pouvez changer à la volée de Font (pour cela vous devez la déclarer comme une librairie en début de projet, par exemple #include <Fonts/FreeMono9pt7b.h>)
+    //display.setFont(&FreeMono9pt7b);
+    display.setTextColor(WHITE);
 
-  display.println("Hello, world!");
+    display.println("Hello, world!");
 
-  //display.setFont();                      // Pour revenir à la Font par défaut
+    //display.setFont();                      // Pour revenir à la Font par défaut
 
-  delay(4000); // Pause for 2 seconds
-  */
+    delay(4000); // Pause for 2 seconds
+    */
 
-  // Muestro logotipos como animación de carga
-  display.clearDisplay();
-  display.drawBitmap(0, 0,  logo, 128, 64, 1);
-  display.display();
+    // Muestro logotipos como animación de carga
+    display.clearDisplay();
+    display.drawBitmap(0, 0,  logo, 128, 64, 1);
+    display.display();
 
-  delay(150);
+    delay(150);
 
-  display.clearDisplay();
-  display.drawBitmap(0, 0,  logo2, 128, 64, 1);
-  display.display();
+    display.clearDisplay();
+    display.drawBitmap(0, 0,  logo2, 128, 64, 1);
+    display.display();
 
-  delay(150);
+    delay(150);
 
-  display.clearDisplay();
-  display.drawBitmap(0, 0,  logo3, 128, 64, 1);
-  display.display();
+    display.clearDisplay();
+    display.drawBitmap(0, 0,  logo3, 128, 64, 1);
+    display.display();
 
-  delay(150);
+    delay(150);
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(23,0);
-  display.println("ULTIMA LECTURA");
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(23,0);
+    display.println("ULTIMA LECTURA");
 
-  // Pines Analógicos
-  display.print("A36: ");
-  display.print((int)analog1LastValue);
-  display.print(" | A39: ");
-  display.println((int)analog2LastValue);
-  display.print("A34: ");
-  display.print((int)analog3LastValue);
-  display.print(" | A35: ");
-  display.println((int)analog4LastValue);
-  display.print("A32: ");
-  display.print((int)analog5LastValue);
-  display.print(" | A33: ");
-  display.println((int)analog6LastValue);
+    // Pines Analógicos
+    display.print("A36: ");
+    display.print((int)analog1LastValue);
+    display.print(" | A39: ");
+    display.println((int)analog2LastValue);
+    display.print("A34: ");
+    display.print((int)analog3LastValue);
+    display.print(" | A35: ");
+    display.println((int)analog4LastValue);
+    display.print("A32: ");
+    display.print((int)analog5LastValue);
+    display.print(" | A33: ");
+    display.println((int)analog6LastValue);
 
-  // Temperatura
-  display.print(F("Tem: "));
-  display.print(temperature);
-  display.print(F("C"));
+    // Temperatura
+    display.print(F("Tem: "));
+    display.print(temperature);
+    display.print(F("C"));
 
-  // Humedad
-  display.print(F(" Hum: "));
-  display.print((int)humidity);
-  display.println(F("%"));
+    // Humedad
+    display.print(F(" Hum: "));
+    display.print((int)humidity);
+    display.println(F("%"));
 
-  // Luz - UV
-  display.print(F("UV: "));
-  display.print((int)uv_quantity);
+    // Luz - UV
+    display.print(F("UV: "));
+    display.print((int)uv_quantity);
 
-  if (WiFi.status() == WL_CONNECTED) {
-    display.println(" WLAN: ON");
-  } else {
-    display.println(" WLAN: OFF");
-  }
+    if (WiFi.status() == WL_CONNECTED) {
+        display.println(" WLAN: ON");
+    } else {
+        display.println(" WLAN: OFF");
+    }
 
-  // Bomba de agua
-  display.print(F("Water: "));
-  display.print(waterPump_status ? "on" : "off");
+    // Bomba de agua
+    display.print(F("Water: "));
+    display.print(waterPump_status ? "on" : "off");
 
-  // Vaporizador
-  display.print(F(" Vap: "));
-  display.println(vaporizer_status ? "on" : "off");
+    // Vaporizador
+    display.print(F(" Vap: "));
+    display.println(vaporizer_status ? "on" : "off");
 
-  if (WiFi.status() == WL_CONNECTED) {
-    display.print("IP: ");
-    display.println(WiFi.localIP());
-  }
+    if (WiFi.status() == WL_CONNECTED) {
+        display.print("IP: ");
+        display.println(WiFi.localIP());
+    }
 
-  display.display();
+    display.display();
 }
 
 bool uploadDataToApi() {
@@ -797,9 +813,6 @@ bool uploadDataToApi() {
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("Iniciando subida a la API");
         HTTPClient http;
-        
-        // Porcentaje de humedad en el suelo.
-        float soil_humidity = analog1LastValue / (4096/100);
 
         // Parámetros a enviar
         //char params = '[{"smartbonsai_plant_id":1,"uv": 4, "temperature": "26", "humidity": 58, "soil_humidity":71,"full_water_tank": true, "waterpump_enabled": false, "vaporizer_enabled": false}]';
@@ -808,7 +821,7 @@ bool uploadDataToApi() {
             ",\"temperature\":" + (String)temperature + 
             ",\"humidity\":" + (String)humidity + 
             ",\"soil_humidity\":" + (String)soil_humidity + 
-            ",\"full_water_tank\":" + "true" + 
+            ",\"full_water_tank\":" + (String)full_water_tank + 
             ",\"waterpump_enabled\":" + (String)waterPump_status + 
             ",\"vaporizer_enabled\":" + (String)vaporizer_status + 
             "}]";
@@ -816,8 +829,8 @@ bool uploadDataToApi() {
         Serial.println("Parámetros json:");
         Serial.println(params);
         
-        http.begin((String)API_DOMAIN + ":" +(String)API_PORT + "/" + (String)API_PATH);
         //http.begin("https://api.fryntiz.dev/smartplant/register/add-json");
+        http.begin((String)API_DOMAIN + ":" +(String)API_PORT + "/" + (String)API_PATH);
         http.addHeader("Content-Type", "application/x-www-form-urlencoded");
         http.addHeader("Authorization", API_TOKEN_BEARER);
         http.addHeader("Accept", "*/*");
@@ -832,10 +845,7 @@ bool uploadDataToApi() {
         Serial.println("Código de respuesta de la API:");
         Serial.println(httpCode);
 
-        // json con array de lecturas attribute "data[]":
-        //smartbonsai_plant_id
-
-
+        // Indica que ha terminado de transmitirse el post.
         http.end();
 
         return true;
@@ -850,36 +860,42 @@ bool uploadDataToApi() {
  * Enciende el motor de riego solo cuando el sensor no detecta humedad.
  */
 void waterPump() {
+    if (analog1LastValue > 3000) {
+        digitalWrite(WATER_PUMP, HIGH);
+        Serial.println("Encendiendo motor de riego");
+        waterPump_status = true;
 
-  // TODO → Implementar umbral de riego en porcentaje
-
-  if (analog1LastValue > 3000) {
-    digitalWrite(WATER_PUMP, HIGH);
-    Serial.println("Encendiendo motor de riego");
-    waterPump_status = true;
-  } else {
-    digitalWrite(WATER_PUMP, LOW);
-    Serial.println("Motor de riego apagado");
-    waterPump_status = false;
-  }
+        // Motor de riego durante 4 segundos y se detiene.
+        delay(4000);
+        digitalWrite(WATER_PUMP, LOW);
+        Serial.println("Apagando motor de riego");
+    } else {
+        digitalWrite(WATER_PUMP, LOW);
+        Serial.println("Motor de riego apagado");
+        waterPump_status = false;
+    }
 }
 
 /**
  * Enciende el vaporizador de agua cuando se dan las condiciones necesarias.
  */
 void vaporizer() {
-
-  if ((humidity < 65) && (temperature < 30)) {
-    delay(100);
-    Serial.println("El vaporizador está encendido");
-    digitalWrite(VAPORIZER, HIGH);
-    vaporizer_status = true;
-  } else {
-    delay(100);
-    Serial.println("El vaporizador está apagado");
-    digitalWrite(VAPORIZER, LOW);
-    vaporizer_status = false;
-  }
+    if ((humidity < 65) && (temperature < 30)) {
+        delay(100);
+        Serial.println("El vaporizador está encendido");
+        digitalWrite(VAPORIZER, HIGH);
+        vaporizer_status = true;
+        
+        // Vaporizador durante 10 segundos y se detiene.
+        delay(10000);
+        digitalWrite(VAPORIZER, LOW);
+        Serial.println("Apagando vaporizador");
+    } else {
+        delay(100);
+        Serial.println("El vaporizador está apagado");
+        digitalWrite(VAPORIZER, LOW);
+        vaporizer_status = false;
+    }
 }
 
 /**
@@ -961,33 +977,39 @@ void loop() {
     // Leo y almaceno timestamp de la lectura actual
     //readClock();
 
-  // Leo todos los pines analógicos.
-  readAnalogicSensors();
+    // Leo todos los pines analógicos.
+    readAnalogicSensors();
 
-  // Leo pines digitales
-  readTemperature();
-  readHumidity();
-  readLight();
+    // Leo pines digitales
+    readTemperature();
+    readHumidity();
+    readLight();
 
-  // Compruebo si necesita regar.
-  waterPump();
+    // Compruebo si necesita regar.
+    waterPump();
 
-  // Compruebo si necesita encender el vaporizador.
-  vaporizer();
+    // Compruebo si necesita encender el vaporizador.
+    vaporizer();
 
-  // Muestro los datos por Serial.
-  printResumeBySerial();
+    // Muestro los datos por Serial.
+    printResumeBySerial();
 
-  // Muestro los datos por pantalla.
-  printResumeByDisplay();
+    // Muestro los datos por pantalla.
+    printResumeByDisplay();
 
-  // Subo los datos a la API
-  if (upload_to_api) {
-    uploadDataToApi();
-  }
+    // Subo los datos a la API
+    if (upload_to_api) {
+      uploadDataToApi();
+    }
 
-  // DEBUG
-  //scanI2cSensors();
+    // DEBUG
+    //scanI2cSensors();
 
-  delay(10000);
+    // Reestablezco marcas de riego.
+    waterPump_status = false;
+    vaporizer_status = false;
+
+    // TODO → Refactorizar e hibernar el ESP32 unos 30 minutos en cada iteración.
+    // Pausa entre lecturas
+    delay(30000);
 }
