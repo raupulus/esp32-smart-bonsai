@@ -1,14 +1,17 @@
 #include <Arduino.h>
 #include <string>
 
-//const bool upload_to_api = true;
-
 #include <api.cpp>
 
 #ifndef upload_to_api
 #define upload_to_api false
 #define AP_NAME ""
 #define AP_PASSWORD ""
+#define API_DOMAIN ""
+#define API_PORT ""
+#define API_PATH ""
+#define API_TOKEN_BEARER ""
+#define PLANT_ID ""
 #endif
 
 #include "WiFi.h"
@@ -19,6 +22,12 @@
 #include <Wire.h>
 #include "Adafruit_VEML6070.h"
 #include <driver/i2c.h>
+
+// Parámetros para el modo hibernación
+#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
+//#define TIME_TO_SLEEP  108000        /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP  20        /* Time ESP32 will go to sleep (in seconds) */
+RTC_DATA_ATTR int bootCount = 0;
 
 // Pantalla OLED ssd1306
 #include <Adafruit_SSD1306.h>
@@ -37,13 +46,10 @@ float temperature = 0.0;
 float humidity = 0.0;
 float uv_quantity = 0.0;
 float uv_index = 0.0;
-boolean waterPump_status = false;
-boolean vaporizer_status = false;
-boolean full_water_tank = false;
-// Porcentaje de humedad en el suelo.
-float soil_humidity = 0.0;
-
-
+float soil_humidity = 0.0; // Porcentaje de humedad en el suelo.
+boolean waterPump_status = false;  // Indica si se ha regado en esta iteración del loop.
+boolean vaporizer_status = false;  // Indica si se ha vaporizado en esta iteración del loop.
+boolean full_water_tank = false;  // Indica si el tanque tiene agua.
 
 // Declaro los pines analógicos.
 const int analog1Pin = 36;
@@ -74,11 +80,6 @@ Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
-
-#define NUMFLAKES     10 // Number of snowflakes in the animation example
-
-#define LOGO_HEIGHT   16
-#define LOGO_WIDTH    16
 
 const unsigned char logo [] PROGMEM=
 {
@@ -292,11 +293,11 @@ const int I2C_SCL_PIN = 23;
 
 // Convert normal decimal numbers to binary coded decimal
 byte decToBcd(byte val){
-  return( (val/10*16) + (val%10) );
+    return( (val/10*16) + (val%10) );
 }
 // Convert binary coded decimal to normal decimal numbers
 byte bcdToDec(byte val){
-  return( (val/16*10) + (val%16) );
+    return( (val/16*10) + (val%16) );
 }
 
 /**
@@ -305,119 +306,117 @@ byte bcdToDec(byte val){
 bool setClock(byte second, byte minute, byte hour, byte dayOfWeek, byte
 dayOfMonth, byte month, byte year){
 
-  Serial.println("Estableciendo fecha en reloj");
+    Serial.println("Estableciendo fecha en reloj");
 
-  /*
-  // sets time and date data to DS3231
-  Wire.beginTransmission(DS3231_I2C_ADDRESS);
-  Wire.write(0); // set next input to start at the seconds register
-  Wire.write(decToBcd(second)); // set seconds
-  Wire.write(decToBcd(minute)); // set minutes
-  Wire.write(decToBcd(hour)); // set hours
-  Wire.write(decToBcd(dayOfWeek)); // set day of week (1=Sunday, 7=Saturday)
-  Wire.write(decToBcd(dayOfMonth)); // set date (1 to 31)
-  Wire.write(decToBcd(month)); // set month
-  Wire.write(decToBcd(year)); // set year (0 to 99)
-  Wire.endTransmission();
-  */
+    /*
+    // sets time and date data to DS3231
+    Wire.beginTransmission(DS3231_I2C_ADDRESS);
+    Wire.write(0); // set next input to start at the seconds register
+    Wire.write(decToBcd(second)); // set seconds
+    Wire.write(decToBcd(minute)); // set minutes
+    Wire.write(decToBcd(hour)); // set hours
+    Wire.write(decToBcd(dayOfWeek)); // set day of week (1=Sunday, 7=Saturday)
+    Wire.write(decToBcd(dayOfMonth)); // set date (1 to 31)
+    Wire.write(decToBcd(month)); // set month
+    Wire.write(decToBcd(year)); // set year (0 to 99)
+    Wire.endTransmission();
+    */
 
-  // Escribir la dirección del registro segundero
-  Wire.write(0x00);
+    // Escribir la dirección del registro segundero
+    Wire.write(0x00);
 
-  // Escribir valores en los registros, nos aseguramos que el bit clock halt
-  // en el registro del segundero este desactivado (esto hace que el reloj funcione)
-  Wire.write(decToBcd(second & 0x7F)); // <--- Esto hace que el reloj comience a trabajar
-  Wire.write(decToBcd(minute));
-  Wire.write(decToBcd(hour));
-  Wire.write(decToBcd(dayOfWeek));
-  Wire.write(decToBcd(dayOfMonth));
-  Wire.write(decToBcd(month));
-  Wire.write(decToBcd(year));
+    // Escribir valores en los registros, nos aseguramos que el bit clock halt
+    // en el registro del segundero este desactivado (esto hace que el reloj funcione)
+    Wire.write(decToBcd(second & 0x7F)); // <--- Esto hace que el reloj comience a trabajar
+    Wire.write(decToBcd(minute));
+    Wire.write(decToBcd(hour));
+    Wire.write(decToBcd(dayOfWeek));
+    Wire.write(decToBcd(dayOfMonth));
+    Wire.write(decToBcd(month));
+    Wire.write(decToBcd(year));
 
-  // Terminamos la escritura y verificamos si el DS1307 respondio
-  // Si la escritura se llevo a cabo el metodo endTransmission retorna 0
-  if (Wire.endTransmission() != 0)
-    return false;
+    // Terminamos la escritura y verificamos si el DS1307 respondio
+    // Si la escritura se llevo a cabo el metodo endTransmission retorna 0
+    if (Wire.endTransmission() != 0)
+        return false;
 
-  // Retornar verdadero si se escribio con exito
-  return true;
+    // Retornar verdadero si se escribio con exito
+    return true;
 }
 
 // Lee el módulo RTC DS1307 (RELOJ)
 void readDS3231time(byte *second,
-byte *minute,
-byte *hour,
-byte *dayOfWeek,
-byte *dayOfMonth,
-byte *month,
-byte *year) {
-  Wire.beginTransmission(DS3231_I2C_ADDRESS);
-  Wire.write(0); // set DS3231 register pointer to 00h
-  Wire.endTransmission();
-  Wire.requestFrom(DS3231_I2C_ADDRESS, 7);
-  // request seven bytes of data from DS3231 starting from register 00h
-  *second = bcdToDec(Wire.read() & 0x7f);
-  *minute = bcdToDec(Wire.read());
-  *hour = bcdToDec(Wire.read() & 0x3f);
-  *dayOfWeek = bcdToDec(Wire.read());
-  *dayOfMonth = bcdToDec(Wire.read());
-  *month = bcdToDec(Wire.read());
-  *year = bcdToDec(Wire.read());
-
-
+                    byte *minute,
+                    byte *hour,
+                    byte *dayOfWeek,
+                    byte *dayOfMonth,
+                    byte *month,
+                    byte *year) {
+    Wire.beginTransmission(DS3231_I2C_ADDRESS);
+    Wire.write(0); // set DS3231 register pointer to 00h
+    Wire.endTransmission();
+    Wire.requestFrom(DS3231_I2C_ADDRESS, 7);
+    // request seven bytes of data from DS3231 starting from register 00h
+    *second = bcdToDec(Wire.read() & 0x7f);
+    *minute = bcdToDec(Wire.read());
+    *hour = bcdToDec(Wire.read() & 0x3f);
+    *dayOfWeek = bcdToDec(Wire.read());
+    *dayOfMonth = bcdToDec(Wire.read());
+    *month = bcdToDec(Wire.read());
+    *year = bcdToDec(Wire.read());
 }
 
 // Muestra datos por consola del módulo RTC DS1307 (RELOJ)
 void readClock(){
-  byte second, minute, hour, dayOfWeek, dayOfMonth, month, year;
-  // retrieve data from DS3231
-  readDS3231time(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month,
-  &year);
-  // send it to the serial monitor
-  Serial.print(hour, DEC);
-  // convert the byte variable to a decimal number when displayed
-  Serial.print(":");
-  if (minute<10){
-    Serial.print("0");
-  }
-  Serial.print(minute, DEC);
-  Serial.print(":");
-  if (second<10){
-    Serial.print("0");
-  }
-  Serial.print(second, DEC);
-  Serial.print(" ");
-  Serial.print(dayOfMonth, DEC);
-  Serial.print("/");
-  Serial.print(month, DEC);
-  Serial.print("/");
-  Serial.print(year, DEC);
-  Serial.print(" Día de la semana: ");
-  switch(dayOfWeek){
-  case 1:
-    Serial.println("Domingo");
-    break;
-  case 2:
-    Serial.println("Lunes");
-    break;
-  case 3:
-    Serial.println("Martes");
-    break;
-  case 4:
-    Serial.println("Miércoles");
-    break;
-  case 5:
-    Serial.println("Jueves");
-    break;
-  case 6:
-    Serial.println("Viernes");
-    break;
-  case 7:
-    Serial.println("Sábado");
-    break;
-  }
+    byte second, minute, hour, dayOfWeek, dayOfMonth, month, year;
+    // retrieve data from DS3231
+    readDS3231time(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month,
+    &year);
+    // send it to the serial monitor
+    Serial.print(hour, DEC);
+    // convert the byte variable to a decimal number when displayed
+    Serial.print(":");
+    if (minute<10){
+        Serial.print("0");
+    }
+    Serial.print(minute, DEC);
+    Serial.print(":");
+    if (second<10){
+        Serial.print("0");
+    }
+    Serial.print(second, DEC);
+    Serial.print(" ");
+    Serial.print(dayOfMonth, DEC);
+    Serial.print("/");
+    Serial.print(month, DEC);
+    Serial.print("/");
+    Serial.print(year, DEC);
+    Serial.print(" Día de la semana: ");
+    switch(dayOfWeek){
+    case 1:
+        Serial.println("Domingo");
+        break;
+    case 2:
+        Serial.println("Lunes");
+        break;
+    case 3:
+        Serial.println("Martes");
+        break;
+    case 4:
+        Serial.println("Miércoles");
+        break;
+    case 5:
+        Serial.println("Jueves");
+        break;
+    case 6:
+        Serial.println("Viernes");
+        break;
+    case 7:
+        Serial.println("Sábado");
+        break;
+    }
 
-  Serial.println();
+    Serial.println();
 }
 
 /*
@@ -621,6 +620,18 @@ void setup() {
     // Setea valores del reloj: DS1307 seconds, minutes, hours, day, date, month, year
     //setClock(00,39,20,5,7,8,20);
     //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
+    delay(500);
+
+    // Habilito y establezco hibernación para ahorrar baterías.
+    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    esp_deep_sleep_start();
+
+    bootCount = bootCount+1;
+    Serial.print("Contador de veces despierto: ");
+    Serial.println(bootCount);
+
+    delay(200);
 }
 
 /**
@@ -704,7 +715,7 @@ void printResumeBySerial() {
     Serial.println("----------------------");
     Serial.println();
 
-    delay(3000);
+    delay(200);
 }
 
 /**
@@ -999,7 +1010,7 @@ void loop() {
 
     // Subo los datos a la API
     if (upload_to_api) {
-      uploadDataToApi();
+        uploadDataToApi();
     }
 
     // DEBUG
