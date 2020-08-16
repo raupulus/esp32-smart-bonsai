@@ -12,6 +12,7 @@
 #endif
 
 #include "WiFi.h"
+#include <HTTPClient.h>
 
 #include "DHT.h"
 
@@ -414,6 +415,22 @@ void readClock(){
   Serial.println();
 }
 
+/*
+ * Realiza la conexión al wifi en caso de no estar conectado.
+ */
+void wifiConnect() {
+    if (upload_to_api && (WiFi.status() != WL_CONNECTED)) {
+        Serial.println("Conectando al WiFi..");
+        WiFi.begin(AP_NAME, AP_PASSWORD);
+        
+        delay(500);
+
+        if(WiFi.status() == WL_CONNECTED) {
+            Serial.println("Se ha conectado al wifi correctamente..");
+        }
+    }
+}
+
 void setup() {
   // Abro el puerto serial.
   Serial.begin(115200);
@@ -548,15 +565,8 @@ void setup() {
   delay(300);
 
   // Conectando al wifi
-  if (upload_to_api) {
-      Serial.println("Conectando al WiFi..");
-      WiFi.begin(AP_NAME, AP_PASSWORD);
-      delay(500);
-
-      if(WiFi.status() == WL_CONNECTED) {
-        Serial.println("Se ha conectado al wifi correctamente..");
-      } 
-  }
+  wifiConnect();
+  
 
   delay(1000);
   /*
@@ -782,14 +792,58 @@ void printResumeByDisplay() {
   display.display();
 }
 
-void uploadDataToApi() {
+bool uploadDataToApi() {
     // Compruebo si está conectado a la red antes de iniciar la subida.
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("Iniciando subida a la API");
-        // TODO → Implementar acciones de subida a la API
+        HTTPClient http;
+        
+        // Porcentaje de humedad en el suelo.
+        float soil_humidity = analog1LastValue / (4096/100);
+
+        // Parámetros a enviar
+        //char params = '[{"smartbonsai_plant_id":1,"uv": 4, "temperature": "26", "humidity": 58, "soil_humidity":71,"full_water_tank": true, "waterpump_enabled": false, "vaporizer_enabled": false}]';
+        String params = "data=[{\"smartbonsai_plant_id\":" + (String)PLANT_ID +
+            ",\"uv\":" + (String)uv_quantity + 
+            ",\"temperature\":" + (String)temperature + 
+            ",\"humidity\":" + (String)humidity + 
+            ",\"soil_humidity\":" + (String)soil_humidity + 
+            ",\"full_water_tank\":" + "true" + 
+            ",\"waterpump_enabled\":" + (String)waterPump_status + 
+            ",\"vaporizer_enabled\":" + (String)vaporizer_status + 
+            "}]";
+
+        Serial.println("Parámetros json:");
+        Serial.println(params);
+        
+        http.begin((String)API_DOMAIN + ":" +(String)API_PORT + "/" + (String)API_PATH);
+        //http.begin("https://api.fryntiz.dev/smartplant/register/add-json");
+        http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+        http.addHeader("Authorization", API_TOKEN_BEARER);
+        http.addHeader("Accept", "*/*");
+
+        Serial.print("Stream:");
+        Serial.println(http.getStream());
+        Serial.print("String:");
+        Serial.println(http.getString());
+        
+        int httpCode = http.POST(params);
+
+        Serial.println("Código de respuesta de la API:");
+        Serial.println(httpCode);
+
+        // json con array de lecturas attribute "data[]":
+        //smartbonsai_plant_id
+
+
+        http.end();
+
+        return true;
     } else {
         Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
     }
+
+    return false;
 }
 
 /**
@@ -901,8 +955,11 @@ void scanI2cSensors() {
 }
 
 void loop() {
-  // Leo y almaceno timestamp de la lectura actual
-  readClock();
+    // Compruebo si está conectado a la red Wireless
+    wifiConnect();
+
+    // Leo y almaceno timestamp de la lectura actual
+    //readClock();
 
   // Leo todos los pines analógicos.
   readAnalogicSensors();
@@ -930,7 +987,7 @@ void loop() {
   }
 
   // DEBUG
-  scanI2cSensors();
+  //scanI2cSensors();
 
   delay(10000);
 }
