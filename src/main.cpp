@@ -49,7 +49,7 @@ float uv_index = 0.0;
 float soil_humidity = 0.0; // Porcentaje de humedad en el suelo.
 boolean waterPump_status = false;  // Indica si se ha regado en esta iteración del loop.
 boolean vaporizer_status = false;  // Indica si se ha vaporizado en esta iteración del loop.
-boolean full_water_tank = false;  // Indica si el tanque tiene agua.
+boolean full_water_tank = true;  // Indica si el tanque tiene agua.
 
 // Declaro los pines analógicos.
 const int analog1Pin = 36;
@@ -631,9 +631,10 @@ void readAnalogicSensors() {
     // Sensor para la humedad de la tierra.
     analog1LastValue = analogRead(analog1Pin);
 
-    // Almaceno el porcentaje de humedad en la tierra
-    soil_humidity = analog1LastValue / (4095/100);
-    
+    // Almaceno y compenso el porcentaje de humedad en la tierra
+    float tmp_soil_humidity = 100 - (analog1LastValue / (4095/100));
+    soil_humidity = tmp_soil_humidity > 0 ? tmp_soil_humidity : 0;
+
     delay(100);
     
     analog2LastValue = analogRead(analog2Pin);
@@ -687,6 +688,10 @@ void printResumeBySerial() {
     Serial.print(F("UV → "));
     Serial.println(uv_quantity);
 
+    // Porcentaje de humedad en tierra
+    Serial.print(F("Humedad en tierra → "));
+    Serial.println(soil_humidity);
+
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("WLAN → ON");
     } else {
@@ -701,6 +706,9 @@ void printResumeBySerial() {
     Serial.print(F("Vaporizador → "));
     Serial.println(vaporizer_status ? "on" : "off");
 
+    // Tanque de agua lleno
+    Serial.print(F("Tanque de agua lleno → "));
+    Serial.println(full_water_tank ? "Si" : "No");
 
     Serial.println("----------------------");
     Serial.println();
@@ -839,10 +847,13 @@ bool uploadDataToApi() {
         // Realiza la subida a la API
         int httpCode = http.POST(params);
 
+        // Respuesta de la API
+        auto response = http.getString();
+
         Serial.print("Stream:");
         Serial.println(http.getStream());
-        Serial.print("String:");
-        Serial.println(http.getString());
+        Serial.print("Response:");
+        Serial.println(response);
 
         Serial.print("Código de respuesta de la API: ");
         Serial.println(httpCode);
@@ -862,7 +873,8 @@ bool uploadDataToApi() {
  * Enciende el motor de riego solo cuando el sensor no detecta humedad.
  */
 void waterPump() {
-    if (analog1LastValue > 3000) {
+    // Enciende el motor cuando la humedad del suelo es menor al 35%
+    if (soil_humidity < 35) {
         digitalWrite(WATER_PUMP, HIGH);
         Serial.println("Encendiendo motor de riego");
         waterPump_status = true;
@@ -882,7 +894,8 @@ void waterPump() {
  * Enciende el vaporizador de agua cuando se dan las condiciones necesarias.
  */
 void vaporizer() {
-    if ((humidity < 65) && (temperature < 30)) {
+    // Enciende el vaporizador cuando la humedad es menor al 60% y la temperatura de 30ºC
+    if ((humidity < 60) && (temperature < 30)) {
         delay(100);
         Serial.println("El vaporizador está encendido");
         digitalWrite(VAPORIZER, HIGH);
