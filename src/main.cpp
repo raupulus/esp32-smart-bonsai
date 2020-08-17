@@ -25,8 +25,8 @@
 
 // Parámetros para el modo hibernación
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-//#define TIME_TO_SLEEP  108000        /* Time ESP32 will go to sleep (in seconds) */
-#define TIME_TO_SLEEP  20        /* Time ESP32 will go to sleep (in seconds) */
+//#define TIME_TO_SLEEP  108000    /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP  300        /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
 
 // Pantalla OLED ssd1306
@@ -622,16 +622,6 @@ void setup() {
     //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
     delay(500);
-
-    // Habilito y establezco hibernación para ahorrar baterías.
-    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-    esp_deep_sleep_start();
-
-    bootCount = bootCount+1;
-    Serial.print("Contador de veces despierto: ");
-    Serial.println(bootCount);
-
-    delay(200);
 }
 
 /**
@@ -837,7 +827,7 @@ bool uploadDataToApi() {
             ",\"vaporizer_enabled\":" + (String)vaporizer_status + 
             "}]";
 
-        Serial.println("Parámetros json:");
+        Serial.print("Parámetros json: ");
         Serial.println(params);
         
         //http.begin("https://api.fryntiz.dev/smartplant/register/add-json");
@@ -846,14 +836,15 @@ bool uploadDataToApi() {
         http.addHeader("Authorization", API_TOKEN_BEARER);
         http.addHeader("Accept", "*/*");
 
+        // Realiza la subida a la API
+        int httpCode = http.POST(params);
+
         Serial.print("Stream:");
         Serial.println(http.getStream());
         Serial.print("String:");
         Serial.println(http.getString());
-        
-        int httpCode = http.POST(params);
 
-        Serial.println("Código de respuesta de la API:");
+        Serial.print("Código de respuesta de la API: ");
         Serial.println(httpCode);
 
         // Indica que ha terminado de transmitirse el post.
@@ -982,6 +973,12 @@ void scanI2cSensors() {
 }
 
 void loop() {
+    delay(2000);
+
+    Serial.println("");
+    Serial.println("---------------------------------------");
+    Serial.println("Comienza el loop");
+    
     // Compruebo si está conectado a la red Wireless
     wifiConnect();
 
@@ -1022,5 +1019,16 @@ void loop() {
 
     // TODO → Refactorizar e hibernar el ESP32 unos 30 minutos en cada iteración.
     // Pausa entre lecturas
-    delay(30000);
+
+    Serial.println("Termina el loop");
+    Serial.println("---------------------------------------");
+    Serial.println("");
+
+    // Habilito y establezco hibernación para ahorrar baterías.
+    bootCount = bootCount+1;
+    Serial.print("Contador de veces despierto: ");
+    Serial.println(bootCount);
+    delay(500);
+    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    esp_deep_sleep_start();
 }
