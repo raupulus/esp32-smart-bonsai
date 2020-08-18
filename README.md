@@ -34,3 +34,5 @@ archivo de ejemplo actualmente.
 - Sensor analógico genérico para humedad
 - Sensor analógico para tierra con anticorrosión: Capacitive Soil Moisture Sensor v1.2
 - Batería de movil 2,6Ah 3,7v de lition (Sony Xperia Z3 Compact)
+
+## Pines
