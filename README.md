@@ -24,9 +24,10 @@ archivo de ejemplo actualmente.
 
 ## Hardware utilizado
 
-- ESP32
+- ESP32 Lite, versión reducida con gestión de carga para batería en puerto integrado.
 - Módulo para reloj en tiempo real → DS1307 Tiny RTC (Como subo los datos en
-  el momento y para ahorrar gastos además de energía, marco la hora tras subir)
+  el momento y para ahorrar gastos además de energía, marco la hora tras subir
+  así que finalmente no es usado, queda opcional)
 - Pantalla LCD → SSD1306
 - Sensor UV → VEML6070
 - Módulo para relés
@@ -37,6 +38,7 @@ archivo de ejemplo actualmente.
 
 ## Esquemas de Pines
 
+El siguiente esquema de pines es el que utilizo por defecto para el smart bonsai.
 
 ### Pines analógicos
 
