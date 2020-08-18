@@ -48,3 +48,8 @@ archivo de ejemplo actualmente.
 - 18 → Sensor DHT11
 - 13 → Bomba de agua
 - 15 → Vaporizador
+
+### Pines para i2c
+
+- 19 → SDA
+- 23 → SCL
