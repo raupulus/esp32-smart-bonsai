@@ -42,3 +42,9 @@ archivo de ejemplo actualmente.
 
 - 36 → Sensor principal de humedad en tierra
 - 39 → Sensor secundario de humedad en tierra
+
+## Pines digitales
+
+- 18 → Sensor DHT11
+- 13 → Bomba de agua
+- 15 → Vaporizador
