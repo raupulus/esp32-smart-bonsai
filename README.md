@@ -35,4 +35,10 @@ archivo de ejemplo actualmente.
 - Sensor analógico para tierra con anticorrosión: Capacitive Soil Moisture Sensor v1.2
 - Batería de movil 2,6Ah 3,7v de lition (Sony Xperia Z3 Compact)
 
-## Pines
+## Esquemas de Pines
+
+
+### Pines analógicos
+
+- 36 → Sensor principal de humedad en tierra
+- 39 → Sensor secundario de humedad en tierra
