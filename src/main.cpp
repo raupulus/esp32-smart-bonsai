@@ -468,7 +468,7 @@ void setup() {
     * Default is 8 and seems to do well
     * Range is 1 - 255
     * */
-    analogSetCycles(8);
+    //analogSetCycles(8);
 
     /*
     * Set number of samples in the range.
@@ -479,14 +479,14 @@ void setup() {
     * like the sensitivity has been multiplied
     * that many times
     * */
-    analogSetSamples(1);
+    //analogSetSamples(1);
 
     /*
     * Set the divider for the ADC clock.
     * Default is 1
     * Range is 1 - 255
     * */
-    analogSetClockDiv(1);
+    //analogSetClockDiv(1);
 
     /*
     * Set the attenuation for all channels
@@ -538,12 +538,12 @@ void setup() {
     /*
     * Start ADC conversion on attached pin's bus
     * */
-    adcStart(analog1Pin);
-    adcStart(analog2Pin);
-    adcStart(analog3Pin);
-    adcStart(analog4Pin);
-    adcStart(analog5Pin);
-    adcStart(analog6Pin);
+    //adcStart(analog1Pin);
+    //adcStart(analog2Pin);
+    //adcStart(analog3Pin);
+    //adcStart(analog4Pin);
+    //adcStart(analog5Pin);
+    //adcStart(analog6Pin);
 
     /*
     * Check if conversion on the pin's ADC bus is currently running
@@ -857,6 +857,9 @@ bool uploadDataToApi() {
 
         Serial.print("Código de respuesta de la API: ");
         Serial.println(httpCode);
+
+        Serial.print("Ruta de la api: ");
+        Serial.print((String)API_DOMAIN + ":" +(String)API_PORT + "/" + (String)API_PATH);
 
         // Indica que ha terminado de transmitirse el post.
         http.end();
