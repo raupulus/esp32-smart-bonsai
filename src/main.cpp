@@ -12,6 +12,7 @@
 #define API_PATH ""
 #define API_TOKEN_BEARER ""
 #define PLANT_ID ""
+#define DEVICE_ID ""
 #endif
 
 #include "WiFi.h"
@@ -24,7 +25,7 @@
 // Parámetros para el modo hibernación
 #define uS_TO_S_FACTOR 1000000 /* Conversion factor for micro seconds to seconds */
 //#define TIME_TO_SLEEP  108000    /* Time ESP32 will go to sleep (in seconds) */
-#define TIME_TO_SLEEP 300 /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP 10 /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
 
 // Pantalla OLED ssd1306
@@ -38,7 +39,7 @@ Adafruit_BME280 bme;
 const int THRESHOLD_VAPORIZER_AIR_HUMIDITY = 60;  // Umbral de humedad máxima para vaporizador
 const int THRESHOLD_VAPORIZER_TEMPERATURE = 30;   // Umbral de Temperatura máxima para vaporizar agua
 const int THRESHOLD_WATERPUMP_SOIL_HUMIDITY = 35; // Umbral de humedad en suelo para regar en %
-const int DURATION_MOTOR_WATER = 4000;            // Duración del motor de riego en ms
+const int DURATION_MOTOR_WATER = 3000;            // Duración del motor de riego en ms
 
 // Declaro variables de sensores.
 float temperature = 0.0;
@@ -49,26 +50,31 @@ float uv_index = 0.0;
 float soil_humidity = 0.0;        // Porcentaje de humedad en el suelo.
 boolean waterPump_status = false; // Indica si se ha regado en esta iteración del loop.
 boolean vaporizer_status = false; // Indica si se ha vaporizado en esta iteración del loop.
-boolean full_water_tank = true;   // Indica si el tanque tiene agua.
+boolean full_water_tank = false;  // Indica si el tanque tiene agua.
 
-// Declaro los pines analógicos.
+// Declaro los pines analógicos para lectura de humedad del suelo.
 const int analog1Pin = 36;
 const int analog2Pin = 39;
 const int analog3Pin = 35;
 const int analog4Pin = 32;
+const int analog5Pin = 0;
+const int analog6Pin = 0;
 
 // Declaro funciones para almacenar el último valor de los pines analógicos.
 float analog1LastValue = 0;
 float analog2LastValue = 0;
 float analog3LastValue = 0;
 float analog4LastValue = 0;
+float analog5LastValue = 0;
+float analog6LastValue = 0;
 
 // Declaro los pines digitales
 const int LED_ON = 22;       // Pin para indicar que está encendido el circuito.
-const int ENERGY = 17;       // Alimenta la energía de todo el circuito
+const int ENERGY = 17;       // Alimenta la energía de todo el circuito de 3,3v
+const int ENERGY_HIGH = 16;  // Alimenta la energía de todo el circuito de 5v
 const int WATER_PUMP = 18;   // Bomba de agua
 const int VAPORIZER = 5;     // Vaporizador de agua
-const int SENSOR_WATER = 16; // Sensor para el tanque de agua
+const int SENSOR_WATER = 33; // Sensor para el tanque de agua
 
 // Instancio sensor para rayos UV
 Adafruit_VEML6070 uv = Adafruit_VEML6070();
@@ -286,6 +292,49 @@ const int I2C_SDA_PIN = 19;
 const int I2C_SCL_PIN = 23;
 
 /*
+void scanI2cSensors()
+{
+    byte error, address;
+    int nDevices;
+    Serial.println("Scanning...");
+    nDevices = 0;
+    for (address = 1; address < 127; address++)
+    {
+        Wire.beginTransmission(address);
+        error = Wire.endTransmission();
+        if (error == 0)
+        {
+            Serial.print("I2C device found at address 0x");
+            if (address < 16)
+            {
+                Serial.print("0");
+            }
+            Serial.println(address, HEX);
+            nDevices++;
+        }
+        else if (error == 4)
+        {
+            Serial.print("Unknow error at address 0x");
+            if (address < 16)
+            {
+                Serial.print("0");
+            }
+            Serial.println(address, HEX);
+        }
+    }
+    if (nDevices == 0)
+    {
+        Serial.println("No I2C devices found\n");
+    }
+    else
+    {
+        Serial.println("done\n");
+    }
+    delay(2000);
+}
+*/
+
+/*
  * Realiza la conexión al wifi en caso de no estar conectado.
  */
 void wifiConnect()
@@ -304,6 +353,32 @@ void wifiConnect()
     }
 }
 
+/**
+ * Activa todo el circuito de energía.
+ */
+void powerOn()
+{
+    delay(1000);
+    digitalWrite(ENERGY, HIGH);
+    digitalWrite(ENERGY_HIGH, HIGH);
+    delay(200);
+    digitalWrite(LED_ON, HIGH);
+    delay(5000);
+}
+
+/**
+ * Desactiva todo el circuito de energía.
+ */
+void powerOff()
+{
+    delay(5000);
+    digitalWrite(LED_ON, LOW);
+    delay(200);
+    digitalWrite(ENERGY, LOW);
+    digitalWrite(ENERGY_HIGH, LOW);
+    delay(1000);
+}
+
 void setup()
 {
     // Delay para prevenir posible cuelgue al despertar de hibernación.
@@ -315,7 +390,27 @@ void setup()
     // Establezco salida i2c personalizada.
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
+    delay(100);
+
+    // Configuro pines digitales
+    pinMode(ENERGY, OUTPUT);
+    pinMode(ENERGY_HIGH, OUTPUT);
+    pinMode(LED_ON, OUTPUT);
+    pinMode(WATER_PUMP, OUTPUT);
+    pinMode(VAPORIZER, OUTPUT);
+    pinMode(SENSOR_WATER, INPUT);
+
+    digitalWrite(ENERGY, HIGH);
+    digitalWrite(ENERGY_HIGH, HIGH);
+    digitalWrite(LED_ON, HIGH);
+    digitalWrite(WATER_PUMP, LOW);
+    digitalWrite(VAPORIZER, LOW);
+
+    delay(1000);
+
     display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    //scanI2cSensors();
 
     /*
     * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4096).
@@ -324,7 +419,7 @@ void setup()
     *
     * Note: compatibility with Arduino SAM
     */
-    //analogReadResolution(10);
+    analogReadResolution(12);
 
     /*
     * Sets the sample bits and read resolution
@@ -341,44 +436,34 @@ void setup()
     //analogSetCycles(8);
 
     /*
-    * Set number of samples in the range.
-    * Default is 1
+    * Set number of samples in the range - Default is 1
     * Range is 1 - 255
-    * This setting splits the range into
-    * "samples" pieces, which could look
-    * like the sensitivity has been multiplied
-    * that many times
+    * This setting splits the range into "samples" pieces, which could look
+    * like the sensitivity has been multiplied that many times
     * */
-    //analogSetSamples(1);
+    //analogSetSamples(20);
 
     /*
-    * Set the divider for the ADC clock.
-    * Default is 1
+    * Set the divider for the ADC clock - Default is 1
     * Range is 1 - 255
-    * */
+    */
     //analogSetClockDiv(1);
 
     /*
-    * Set the attenuation for all channels
-    * Default is 11db
-    * */
+    * Set the attenuation for all channels - Default is 11db
+    */
     analogSetAttenuation(ADC_11db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
 
     /*
-    * Set the attenuation for particular pin
-    * Default is 11db
-    * */
+    * Set the attenuation for particular pin - Default is 11db
+    */
     //analogSetPinAttenuation(36, ADC_0db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
 
     // Establezco atenuación de 1,1v para los sensores chirp 1.2
     //analogSetPinAttenuation(analog1Pin, ADC_0db);
-    //analogSetPinAttenuation(analog2Pin, ADC_0db);
-    //analogSetPinAttenuation(analog3Pin, ADC_0db);
 
     // Establezco atenuación para el resto de los sensores a 3,9v
     //analogSetPinAttenuation(analog4Pin, ADC_11db);
-    //analogSetPinAttenuation(analog5Pin, ADC_11db);
-    //analogSetPinAttenuation(analog6Pin, ADC_11db);
 
     /*
     * Get value for HALL sensor (without LNA)
@@ -408,10 +493,6 @@ void setup()
     * */
     //adcStart(analog1Pin);
     //adcStart(analog2Pin);
-    //adcStart(analog3Pin);
-    //adcStart(analog4Pin);
-    //adcStart(analog5Pin);
-    //adcStart(analog6Pin);
 
     /*
     * Check if conversion on the pin's ADC bus is currently running
@@ -442,42 +523,16 @@ void setup()
     // Conectando al wifi
     wifiConnect();
 
-    delay(1000);
-    /*
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.println("Conectando al WiFi..");
-    }
-
-    Serial.println("Conectado al Wifi con éxito");
-    */
-
-    // Configuro pines digitales
-    pinMode(WATER_PUMP, OUTPUT);
-    pinMode(VAPORIZER, OUTPUT);
-
-    delay(300);
+    delay(500);
 
     // Inicializo la lectura del sensor VEML6070
     uv.begin(VEML6070_1_T);
 
     delay(300);
 
-    // Inicializo la lectura del sensor BME280
-
-    if (!bme.begin())
-    {
-        Serial.println(F("Could not find a valid BME280 sensor, check wiring or "
-                         "try a different address!"));
-        while (1)
-            delay(10);
-    }
-
-    delay(300);
-
-    // Inicializo pantalla oled ssd1306
+    // Inicializo pantalla oled ssd1306 - Address 0x3D for 128x64
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
-    { // Address 0x3D for 128x64
+    {
         Serial.println(F("SSD1306 allocation failed"));
         for (;;)
             ; // Don't proceed, loop forever
@@ -485,21 +540,18 @@ void setup()
     display.clearDisplay();
     display.cp437(true); // Para activar carácteres raros en ASCII https://elcodigoascii.com.ar/
 
-    // Show initial display buffer contents on the screen --
-    // the library initializes this with an Adafruit splash screen.
-    //display.display();
-    //delay(2000);
-    // display.display() is NOT necessary after every single drawing command,
-    // unless that's what you want...rather, you can batch up a bunch of
-    // drawing operations and then update the screen all at once by calling
-    // display.display(). These examples demonstrate both approaches...
-
-    // RTC DS1307 (RELOJ)
-    // Setea valores del reloj: DS1307 seconds, minutes, hours, day, date, month, year
-    //setClock(00,39,20,5,7,8,20);
-    //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
     delay(500);
+
+    // Inicializo la lectura del sensor BME280
+    if (!bme.begin(0x76))
+    {
+        Serial.println(F("Could not find a valid BME280 sensor, check wiring or "
+                         "try a different address!"));
+        while (1)
+            delay(50);
+    }
+
+    delay(300);
 }
 
 /**
@@ -519,10 +571,10 @@ void readAnalogicSensors()
     analog2LastValue = analogRead(analog2Pin);
 
     delay(100);
-    //analog3LastValue = analogRead(analog3Pin);
-    //delay(100);
-    //analog4LastValue = analogRead(analog4Pin);
-    //delay(100);
+    analog3LastValue = analogRead(analog3Pin);
+    delay(100);
+    analog4LastValue = analogRead(analog4Pin);
+    delay(100);
     //analog5LastValue = analogRead(analog5Pin);
     //delay(100);
     //analog6LastValue = analogRead(analog6Pin);
@@ -561,7 +613,7 @@ void printResumeBySerial()
 
     // Presión Atmosférica
     Serial.print(F("Pressure → "));
-    Serial.print(humidity);
+    Serial.print(pressure);
     Serial.println(F("b "));
 
     // Luz - UV
@@ -647,7 +699,7 @@ void printResumeByDisplay()
 
     display.clearDisplay();
     display.setTextSize(1);
-    display.setTextColor(WHITE);
+    display.setTextColor(SSD1306_WHITE);
     display.setCursor(23, 0);
     display.println("ULTIMA LECTURA");
 
@@ -712,6 +764,8 @@ bool uploadDataToApi()
         // Parámetros a enviar
         //char params = '[{"smartbonsai_plant_id":1,"uv": 4, "temperature": "26", "humidity": 58, "soil_humidity":71,"full_water_tank": true, "waterpump_enabled": false, "vaporizer_enabled": false}]';
         String params = "data=[{\"smartbonsai_plant_id\":" + (String)PLANT_ID +
+                        ",\"device_id\":" + (String)DEVICE_ID +
+                        ",\"pressure\":" + (String)pressure +
                         ",\"uv\":" + (String)uv_quantity +
                         ",\"temperature\":" + (String)temperature +
                         ",\"humidity\":" + (String)humidity +
@@ -763,9 +817,9 @@ bool uploadDataToApi()
 /**
  * Comprueba si se detecta agua.
  */
-bool canIWather()
+void getWaterTank()
 {
-    return digitalRead(SENSOR_WATER);
+    full_water_tank = digitalRead(SENSOR_WATER);
 }
 
 /**
@@ -777,7 +831,7 @@ void waterPump()
     if (soil_humidity < THRESHOLD_WATERPUMP_SOIL_HUMIDITY)
     {
         // Compruebo si hay agua para poder regar.
-        if (canIWather())
+        if (full_water_tank)
         {
             delay(100);
 
@@ -814,7 +868,7 @@ void vaporizer()
     if ((humidity < THRESHOLD_VAPORIZER_AIR_HUMIDITY) && (temperature < THRESHOLD_VAPORIZER_TEMPERATURE))
     {
         // Compruebo si hay agua para poder regar.
-        if (canIWather())
+        if (full_water_tank)
         {
             delay(100);
             Serial.println("El vaporizador está encendido");
@@ -886,7 +940,7 @@ void readPressure()
 {
     delay(250);
 
-    float get_pressure = bme.readPressure();
+    float get_pressure = bme.readPressure() / 100;
 
     // Check if any reads failed and exit early (to try again).
     if (isnan(get_pressure))
@@ -915,73 +969,12 @@ void readLight()
     uv_quantity = get_uv;
 }
 
-/*
-void scanI2cSensors()
-{
-    byte error, address;
-    int nDevices;
-    Serial.println("Scanning...");
-    nDevices = 0;
-    for (address = 1; address < 127; address++)
-    {
-        Wire.beginTransmission(address);
-        error = Wire.endTransmission();
-        if (error == 0)
-        {
-            Serial.print("I2C device found at address 0x");
-            if (address < 16)
-            {
-                Serial.print("0");
-            }
-            Serial.println(address, HEX);
-            nDevices++;
-        }
-        else if (error == 4)
-        {
-            Serial.print("Unknow error at address 0x");
-            if (address < 16)
-            {
-                Serial.print("0");
-            }
-            Serial.println(address, HEX);
-        }
-    }
-    if (nDevices == 0)
-    {
-        Serial.println("No I2C devices found\n");
-    }
-    else
-    {
-        Serial.println("done\n");
-    }
-    delay(2000);
-}
-*/
-
-/**
- * Activa todo el circuito de energía.
- */
-void powerOn()
-{
-    delay(1000);
-    digitalWrite(ENERGY, HIGH);
-    delay(5000);
-}
-
-/**
- * Desactiva todo el circuito de energía.
- */
-void powerOff()
-{
-    delay(5000);
-    digitalWrite(ENERGY, LOW);
-    delay(1000);
-}
-
 void loop()
 {
     // Enciendo todo el circuito de corriente.
     powerOn();
+
+    display.clearDisplay();
 
     Serial.println("");
     Serial.println("---------------------------------------");
@@ -1001,6 +994,9 @@ void loop()
     readHumidity();
     readPressure();
     readLight();
+
+    // Compruebo tanque de agua.
+    getWaterTank();
 
     // Compruebo si necesita regar.
     waterPump();
@@ -1023,6 +1019,7 @@ void loop()
     // Reestablezco marcas de riego.
     waterPump_status = false;
     vaporizer_status = false;
+    full_water_tank = false;
 
     Serial.println("Termina el loop");
     Serial.println("---------------------------------------");
@@ -1033,9 +1030,12 @@ void loop()
 
     // Habilito y establezco hibernación para ahorrar baterías.
     bootCount = bootCount + 1;
+
     Serial.print("Contador de veces despierto: ");
     Serial.println(bootCount);
-    delay(500);
+
+    delay(1000);
+
     esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
     esp_deep_sleep_start();
 }

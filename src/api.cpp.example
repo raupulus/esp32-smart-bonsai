@@ -9,3 +9,4 @@
 #define API_PATH "" // Directorio dentro de la api para lanzar el POST
 #define TOKEN_BEARER "Bearer ????"  // Token Bearer para autenticarse en la API
 #define PLANT_ID "1"  // El id de la planta asociada a los registros
+#define DEVICE_ID "1" // El id del dispositivo asociado en la API para la subida
