@@ -1071,9 +1071,6 @@ void loop()
     Serial.println("---------------------------------------");
     Serial.println("");
 
-    // Apago todo el circuito de corriente.
-    powerOff();
-
     // Habilito y establezco hibernación para ahorrar baterías.
     bootCount = bootCount + 1;
 
@@ -1081,6 +1078,9 @@ void loop()
     Serial.println(bootCount);
 
     delay(10000);
+
+    // Apago todo el circuito de corriente.
+    powerOff();
 
     esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
     esp_deep_sleep_start();
