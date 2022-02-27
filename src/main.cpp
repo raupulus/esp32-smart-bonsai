@@ -11,8 +11,13 @@
 #define API_PORT ""
 #define API_PATH ""
 #define API_TOKEN_BEARER ""
-#define PLANT_ID ""
 #define DEVICE_ID ""
+#define PLANT_ID_1 ""
+#define PLANT_ID_2 ""
+#define PLANT_ID_3 ""
+#define PLANT_ID_4 ""
+#define PLANT_ID_5 ""
+#define PLANT_ID_6 ""
 #endif
 
 #include "WiFi.h"
@@ -47,7 +52,12 @@ float humidity = 0.0;
 float pressure = 0.0; // Presión atmosférica
 float uv_quantity = 0.0;
 float uv_index = 0.0;
-float soil_humidity = 0.0;        // Porcentaje de humedad en el suelo.
+float soil_humidity_1 = 0.0;
+float soil_humidity_2 = 0.0;
+float soil_humidity_3 = 0.0;
+float soil_humidity_4 = 0.0;
+float soil_humidity_5 = 0.0;
+float soil_humidity_6 = 0.0;
 boolean waterPump_status = false; // Indica si se ha regado en esta iteración del loop.
 boolean vaporizer_status = false; // Indica si se ha vaporizado en esta iteración del loop.
 boolean full_water_tank = false;  // Indica si el tanque tiene agua.
@@ -526,11 +536,13 @@ void setup()
     delay(500);
 
     // Inicializo la lectura del sensor VEML6070
+    Serial.println("Inicializando sensor UV VEML6070");
     uv.begin(VEML6070_1_T);
 
     delay(300);
 
     // Inicializo pantalla oled ssd1306 - Address 0x3D for 128x64
+    Serial.println("Inicializando pantalla SSD1306");
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
     {
         Serial.println(F("SSD1306 allocation failed"));
@@ -543,6 +555,7 @@ void setup()
     delay(500);
 
     // Inicializo la lectura del sensor BME280
+    Serial.println("Inicializando sensor BME280");
     if (!bme.begin(0x76))
     {
         Serial.println(F("Could not find a valid BME280 sensor, check wiring or "
@@ -559,21 +572,32 @@ void setup()
  */
 void readAnalogicSensors()
 {
+
     // Sensor para la humedad de la tierra.
     analog1LastValue = analogRead(analog1Pin);
 
     // Almaceno y compenso el porcentaje de humedad en la tierra
-    float tmp_soil_humidity = 100 - (analog1LastValue / (4095 / 100));
-    soil_humidity = tmp_soil_humidity > 0 ? tmp_soil_humidity : 0;
+    float tmp_soil_humidity1 = 100 - (analog1LastValue / (4095 / 100));
+    soil_humidity_1 = tmp_soil_humidity1 > 0 ? tmp_soil_humidity1 : 0;
 
     delay(100);
 
     analog2LastValue = analogRead(analog2Pin);
+    float tmp_soil_humidity2 = 100 - (analog1LastValue / (4095 / 100));
+    soil_humidity_2 = tmp_soil_humidity2 > 0 ? tmp_soil_humidity2 : 0;
 
     delay(100);
+
     analog3LastValue = analogRead(analog3Pin);
+    float tmp_soil_humidity3 = 100 - (analog1LastValue / (4095 / 100));
+    soil_humidity_3 = tmp_soil_humidity3 > 0 ? tmp_soil_humidity3 : 0;
+
     delay(100);
+
     analog4LastValue = analogRead(analog4Pin);
+    float tmp_soil_humidity4 = 100 - (analog1LastValue / (4095 / 100));
+    soil_humidity_4 = tmp_soil_humidity4 > 0 ? tmp_soil_humidity4 : 0;
+
     delay(100);
     //analog5LastValue = analogRead(analog5Pin);
     //delay(100);
@@ -621,8 +645,23 @@ void printResumeBySerial()
     Serial.println(uv_quantity);
 
     // Porcentaje de humedad en tierra
-    Serial.print(F("Humedad en tierra → "));
-    Serial.println(soil_humidity);
+    Serial.print(F("Humedad en tierra 1 → "));
+    Serial.println(soil_humidity_1);
+    Serial.print(F("Humedad en tierra 2 → "));
+    Serial.println(soil_humidity_2);
+    Serial.print(F("Humedad en tierra 3 → "));
+    Serial.println(soil_humidity_3);
+
+    Serial.print(F("Humedad en tierra 4 → "));
+    Serial.println(soil_humidity_4);
+
+    Serial.print(F("Humedad en tierra 5 → "));
+
+    Serial.println(soil_humidity_5);
+
+    Serial.print(F("Humedad en tierra 6 → "));
+
+    Serial.println(soil_humidity_6);
 
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -753,23 +792,25 @@ void printResumeByDisplay()
     display.display();
 }
 
-bool uploadDataToApi()
+void uploadDataToApi(String PLANT_ID, float soilMoisure)
 {
-    // Compruebo si está conectado a la red antes de iniciar la subida.
-    if (WiFi.status() == WL_CONNECTED)
+    if (!PLANT_ID || PLANT_ID == "")
+    {
+        Serial.println("No se ha configurado: " + PLANT_ID);
+    }
+    else if (WiFi.status() == WL_CONNECTED)
     {
         Serial.println("Iniciando subida a la API");
         HTTPClient http;
 
         // Parámetros a enviar
-        //char params = '[{"smartbonsai_plant_id":1,"uv": 4, "temperature": "26", "humidity": 58, "soil_humidity":71,"full_water_tank": true, "waterpump_enabled": false, "vaporizer_enabled": false}]';
-        String params = "data=[{\"smartbonsai_plant_id\":" + (String)PLANT_ID +
+        String params = "data=[{\"smartbonsai_plant_id\":" + PLANT_ID +
                         ",\"device_id\":" + (String)DEVICE_ID +
                         ",\"pressure\":" + (String)pressure +
                         ",\"uv\":" + (String)uv_quantity +
                         ",\"temperature\":" + (String)temperature +
                         ",\"humidity\":" + (String)humidity +
-                        ",\"soil_humidity\":" + (String)soil_humidity +
+                        ",\"soil_humidity\":" + (String)soilMoisure +
                         ",\"full_water_tank\":" + (String)full_water_tank +
                         ",\"waterpump_enabled\":" + (String)waterPump_status +
                         ",\"vaporizer_enabled\":" + (String)vaporizer_status +
@@ -803,15 +844,11 @@ bool uploadDataToApi()
 
         // Indica que ha terminado de transmitirse el post.
         http.end();
-
-        return true;
     }
     else
     {
         Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
     }
-
-    return false;
 }
 
 /**
@@ -827,8 +864,10 @@ void getWaterTank()
  */
 void waterPump()
 {
+    // TODO → Comprobar todos los sensores.
+
     // Enciende el motor cuando la humedad del suelo es menor al 35%
-    if (soil_humidity < THRESHOLD_WATERPUMP_SOIL_HUMIDITY)
+    if (soil_humidity_1 < THRESHOLD_WATERPUMP_SOIL_HUMIDITY)
     {
         // Compruebo si hay agua para poder regar.
         if (full_water_tank)
@@ -974,6 +1013,8 @@ void loop()
     // Enciendo todo el circuito de corriente.
     powerOn();
 
+    //sleep(2000);
+
     display.clearDisplay();
 
     Serial.println("");
@@ -1013,7 +1054,12 @@ void loop()
     // Subo los datos a la API
     if (upload_to_api)
     {
-        uploadDataToApi();
+        uploadDataToApi((String)PLANT_ID_1, analog1LastValue);
+        uploadDataToApi((String)PLANT_ID_2, analog2LastValue);
+        uploadDataToApi((String)PLANT_ID_3, analog3LastValue);
+        uploadDataToApi((String)PLANT_ID_4, analog4LastValue);
+        uploadDataToApi((String)PLANT_ID_5, analog5LastValue);
+        uploadDataToApi((String)PLANT_ID_6, analog6LastValue);
     }
 
     // Reestablezco marcas de riego.
@@ -1034,7 +1080,7 @@ void loop()
     Serial.print("Contador de veces despierto: ");
     Serial.println(bootCount);
 
-    delay(1000);
+    delay(10000);
 
     esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
     esp_deep_sleep_start();
