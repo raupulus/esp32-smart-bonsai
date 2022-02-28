@@ -45,6 +45,8 @@ const int THRESHOLD_VAPORIZER_AIR_HUMIDITY = 60;  // Umbral de humedad máxima p
 const int THRESHOLD_VAPORIZER_TEMPERATURE = 30;   // Umbral de Temperatura máxima para vaporizar agua
 const int THRESHOLD_WATERPUMP_SOIL_HUMIDITY = 35; // Umbral de humedad en suelo para regar en %
 const int DURATION_MOTOR_WATER = 3000;            // Duración del motor de riego en ms
+const int THRESHOLD_SOIL_MOISURE_MAX = 4000;      // Umbral de resistencia para humedad en suelo máxima, 0%
+const int THRESHOLD_SOIL_MOISURE_MIN = 2330;      // Umbral de resistencia para humedad en suelo mínima, 100%
 
 // Declaro variables de sensores.
 float temperature = 0.0;
@@ -551,6 +553,8 @@ void setup()
     }
     display.clearDisplay();
     display.cp437(true); // Para activar carácteres raros en ASCII https://elcodigoascii.com.ar/
+    display.drawBitmap(0, 0, logo3, 128, 64, 1);
+    display.display();
 
     delay(500);
 
@@ -568,6 +572,31 @@ void setup()
 }
 
 /**
+ * Calcula el porcentaje de humedad en la tierra
+ */
+int calcSoilMoisure(int res)
+{
+    int max = THRESHOLD_SOIL_MOISURE_MAX; // Max resistencia es 4095
+    int min = THRESHOLD_SOIL_MOISURE_MIN;
+
+    int diff = (max - min);
+    int prop = (diff / 100);
+    int calc = 100 - ((res - min) / prop);
+
+    if ((res <= min) || (calc >= 100))
+    {
+        return 100;
+    }
+
+    if ((res >= max) || (calc <= 0))
+    {
+        return 0;
+    }
+
+    return calc;
+}
+
+/**
  * Lee todos los sensores analógicos y los almacena.
  */
 void readAnalogicSensors()
@@ -575,33 +604,29 @@ void readAnalogicSensors()
 
     // Sensor para la humedad de la tierra.
     analog1LastValue = analogRead(analog1Pin);
-
-    // Almaceno y compenso el porcentaje de humedad en la tierra
-    float tmp_soil_humidity1 = 100 - (analog1LastValue / (4095 / 100));
-    soil_humidity_1 = tmp_soil_humidity1 > 0 ? tmp_soil_humidity1 : 0;
+    soil_humidity_1 = calcSoilMoisure(analog1LastValue);
 
     delay(100);
 
     analog2LastValue = analogRead(analog2Pin);
-    float tmp_soil_humidity2 = 100 - (analog1LastValue / (4095 / 100));
-    soil_humidity_2 = tmp_soil_humidity2 > 0 ? tmp_soil_humidity2 : 0;
+    soil_humidity_2 = calcSoilMoisure(analog2LastValue);
 
     delay(100);
 
     analog3LastValue = analogRead(analog3Pin);
-    float tmp_soil_humidity3 = 100 - (analog1LastValue / (4095 / 100));
-    soil_humidity_3 = tmp_soil_humidity3 > 0 ? tmp_soil_humidity3 : 0;
+    soil_humidity_3 = calcSoilMoisure(analog3LastValue);
 
     delay(100);
 
     analog4LastValue = analogRead(analog4Pin);
-    float tmp_soil_humidity4 = 100 - (analog1LastValue / (4095 / 100));
-    soil_humidity_4 = tmp_soil_humidity4 > 0 ? tmp_soil_humidity4 : 0;
+    soil_humidity_4 = calcSoilMoisure(analog4LastValue);
 
     delay(100);
     //analog5LastValue = analogRead(analog5Pin);
+    //soil_humidity_5 = calcSoilMoisure(analog5LastValue);
     //delay(100);
     //analog6LastValue = analogRead(analog6Pin);
+    //soil_humidity_6 = calcSoilMoisure(analog6LastValue);
     //delay(100);
 }
 
@@ -792,7 +817,7 @@ void printResumeByDisplay()
     display.display();
 }
 
-void uploadDataToApi(String PLANT_ID, float soilMoisure)
+void uploadDataToApi(String PLANT_ID, float soilMoisureRaw, int soilPorcent)
 {
     if (!PLANT_ID || PLANT_ID == "")
     {
@@ -804,24 +829,25 @@ void uploadDataToApi(String PLANT_ID, float soilMoisure)
         HTTPClient http;
 
         // Parámetros a enviar
-        String params = "data=[{\"smartbonsai_plant_id\":" + PLANT_ID +
-                        ",\"device_id\":" + (String)DEVICE_ID +
+        String params = "{\"plant_id\":" + PLANT_ID +
+                        ",\"hardware_device_id\":" + (String)DEVICE_ID +
                         ",\"pressure\":" + (String)pressure +
                         ",\"uv\":" + (String)uv_quantity +
                         ",\"temperature\":" + (String)temperature +
                         ",\"humidity\":" + (String)humidity +
-                        ",\"soil_humidity\":" + (String)soilMoisure +
+                        ",\"soil_humidity_raw\":" + (String)soilMoisureRaw +
+                        ",\"soil_humidity\":" + (String)soilPorcent +
                         ",\"full_water_tank\":" + (String)full_water_tank +
                         ",\"waterpump_enabled\":" + (String)waterPump_status +
                         ",\"vaporizer_enabled\":" + (String)vaporizer_status +
-                        "}]";
+                        "}";
 
-        Serial.print("Parámetros json: ");
+        Serial.println("Parámetros json: ");
         Serial.println(params);
 
         //http.begin("https://api.fryntiz.dev/smartplant/register/add-json");
         http.begin((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
-        http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+        http.addHeader("Content-Type", "application/json");
         http.addHeader("Authorization", API_TOKEN_BEARER);
         http.addHeader("Accept", "*/*");
 
@@ -831,16 +857,16 @@ void uploadDataToApi(String PLANT_ID, float soilMoisure)
         // Respuesta de la API
         auto response = http.getString();
 
-        Serial.print("Stream:");
+        Serial.println("Stream:");
         Serial.println(http.getStream());
-        Serial.print("Response:");
+        Serial.println("Response:");
         Serial.println(response);
 
-        Serial.print("Código de respuesta de la API: ");
+        Serial.println("Código de respuesta de la API: ");
         Serial.println(httpCode);
 
-        Serial.print("Ruta de la api: ");
-        Serial.print((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
+        Serial.println("Ruta de la api: ");
+        Serial.println((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
 
         // Indica que ha terminado de transmitirse el post.
         http.end();
@@ -1013,9 +1039,11 @@ void loop()
     // Enciendo todo el circuito de corriente.
     powerOn();
 
-    //sleep(2000);
+    delay(100);
 
     display.clearDisplay();
+    display.drawBitmap(0, 0, logo3, 128, 64, 1);
+    display.display();
 
     Serial.println("");
     Serial.println("---------------------------------------");
@@ -1023,6 +1051,8 @@ void loop()
 
     // Compruebo si está conectado a la red Wireless
     wifiConnect();
+
+    delay(5000);
 
     // Leo y almaceno timestamp de la lectura actual
     //readClock();
@@ -1045,22 +1075,22 @@ void loop()
     // Compruebo si necesita encender el vaporizador.
     vaporizer();
 
-    // Muestro los datos por Serial.
-    printResumeBySerial();
-
     // Muestro los datos por pantalla.
     printResumeByDisplay();
 
     // Subo los datos a la API
     if (upload_to_api)
     {
-        uploadDataToApi((String)PLANT_ID_1, analog1LastValue);
-        uploadDataToApi((String)PLANT_ID_2, analog2LastValue);
-        uploadDataToApi((String)PLANT_ID_3, analog3LastValue);
-        uploadDataToApi((String)PLANT_ID_4, analog4LastValue);
-        uploadDataToApi((String)PLANT_ID_5, analog5LastValue);
-        uploadDataToApi((String)PLANT_ID_6, analog6LastValue);
+        uploadDataToApi((String)PLANT_ID_1, analog1LastValue, soil_humidity_1);
+        uploadDataToApi((String)PLANT_ID_2, analog2LastValue, soil_humidity_2);
+        uploadDataToApi((String)PLANT_ID_3, analog3LastValue, soil_humidity_3);
+        uploadDataToApi((String)PLANT_ID_4, analog4LastValue, soil_humidity_4);
+        uploadDataToApi((String)PLANT_ID_5, analog5LastValue, soil_humidity_5);
+        uploadDataToApi((String)PLANT_ID_6, analog6LastValue, soil_humidity_6);
     }
+
+    // Muestro los datos por Serial.
+    printResumeBySerial();
 
     // Reestablezco marcas de riego.
     waterPump_status = false;
