@@ -30,7 +30,7 @@
 // Parámetros para el modo hibernación
 #define uS_TO_S_FACTOR 1000000 /* Conversion factor for micro seconds to seconds */
 //#define TIME_TO_SLEEP  108000    /* Time ESP32 will go to sleep (in seconds) */
-#define TIME_TO_SLEEP 10 /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP 600 /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
 
 // Pantalla OLED ssd1306
@@ -606,22 +606,22 @@ void readAnalogicSensors()
     analog1LastValue = analogRead(analog1Pin);
     soil_humidity_1 = calcSoilMoisure(analog1LastValue);
 
-    delay(100);
+    delay(1000);
 
     analog2LastValue = analogRead(analog2Pin);
     soil_humidity_2 = calcSoilMoisure(analog2LastValue);
 
-    delay(100);
+    delay(1000);
 
     analog3LastValue = analogRead(analog3Pin);
     soil_humidity_3 = calcSoilMoisure(analog3LastValue);
 
-    delay(100);
+    delay(1000);
 
     analog4LastValue = analogRead(analog4Pin);
     soil_humidity_4 = calcSoilMoisure(analog4LastValue);
 
-    delay(100);
+    delay(1000);
     //analog5LastValue = analogRead(analog5Pin);
     //soil_humidity_5 = calcSoilMoisure(analog5LastValue);
     //delay(100);
