@@ -26,8 +26,7 @@
 
 // Parámetros para el modo hibernación
 #define uS_TO_S_FACTOR 1000000 /* Conversion factor for micro seconds to seconds */
-//#define TIME_TO_SLEEP  108000    /* Time ESP32 will go to sleep (in seconds) */
-#define TIME_TO_SLEEP 60 /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP 60       /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
 
 // Pantalla OLED ssd1306
@@ -65,17 +64,15 @@ const int SENSOR_WATER = 23;  // Sensor para el tanque de agua
 const int LED_NEED_WATER = 4; // Led para avisar que se necesita agua.
 
 // Declaro los pines analógicos para lectura de humedad del suelo.
-const int analog1Pin = 39;
-const int analog2Pin = 35;
-const int analog3Pin = 33;
-const int analog4Pin = 34;
+const int PIN_SOIL_MOISTURE_A0 = 39;
+const int PIN_SOIL_MOISTURE_A1 = 35;
+const int PIN_SOIL_MOISTURE_A2 = 33;
+const int PIN_SOIL_MOISTURE_A3 = 34;
 
-// Variable para forzar DEBUG
+// Constante para forzar DEBUG, sin subir datos a la API ni dormir esp32
 const bool DEBUG = false;
-
-// TODO → Implementar modo debug para depurar en caliente lecturas por display
-bool DEBUG_HOT_MODE = false;            // Indica si se ha activado el modo debug
-const int DEBUG_HOT_MODE_INIT_PIN = 27; // Pin por el que recibe la señal
+const int DEBUG_HOT_MODE_INIT_PIN = 27; // Pin por el que recibe la señal para iniciar DEBUG en funcionamiento.
+bool DEBUG_HOT_MODE = false;            // Indica si se ha activado el modo debug.
 
 // DECLARO CONSTANTES
 const int THRESHOLD_VAPORIZER_AIR_HUMIDITY = 65;  // Umbral de humedad máxima para vaporizador
@@ -288,7 +285,7 @@ void setup()
     //analogSetPinAttenuation(36, ADC_0db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
 
     // Establezco atenuación de 1,1v para los sensores chirp 1.2
-    //analogSetPinAttenuation(analog1Pin, ADC_0db);
+    //analogSetPinAttenuation(PIN_SOIL_MOISTURE_A0, ADC_0db);
 
     // Establezco atenuación para el resto de los sensores a 3,9v
     //analogSetPinAttenuation(analog4Pin, ADC_11db);
@@ -311,16 +308,15 @@ void setup()
     /*
     * Attach pin to ADC (will also clear any other analog mode that could be on)
     * */
-    adcAttachPin(analog1Pin);
-    adcAttachPin(analog2Pin);
-    adcAttachPin(analog3Pin);
-    adcAttachPin(analog4Pin);
+    adcAttachPin(PIN_SOIL_MOISTURE_A0);
+    adcAttachPin(PIN_SOIL_MOISTURE_A1);
+    adcAttachPin(PIN_SOIL_MOISTURE_A2);
+    adcAttachPin(PIN_SOIL_MOISTURE_A3);
 
     /*
     * Start ADC conversion on attached pin's bus
     * */
-    //adcStart(analog1Pin);
-    //adcStart(analog2Pin);
+    //adcStart(PIN_SOIL_MOISTURE_A0);
 
     /*
     * Check if conversion on the pin's ADC bus is currently running
@@ -455,22 +451,22 @@ void readAnalogicSensors()
     delay(3000);
 
     // Sensor para la humedad de la tierra.
-    analog1LastValue = analogRead(analog1Pin);
+    analog1LastValue = analogRead(PIN_SOIL_MOISTURE_A0);
     soil_humidity_1 = calcSoilMoisure(analog1LastValue);
 
     delay(1000);
 
-    analog2LastValue = analogRead(analog2Pin);
+    analog2LastValue = analogRead(PIN_SOIL_MOISTURE_A1);
     soil_humidity_2 = calcSoilMoisure(analog2LastValue);
 
     delay(1000);
 
-    analog3LastValue = analogRead(analog3Pin);
+    analog3LastValue = analogRead(PIN_SOIL_MOISTURE_A2);
     soil_humidity_3 = calcSoilMoisure(analog3LastValue);
 
     delay(1000);
 
-    analog4LastValue = analogRead(analog4Pin);
+    analog4LastValue = analogRead(PIN_SOIL_MOISTURE_A3);
     soil_humidity_4 = calcSoilMoisure(analog4LastValue);
 
     delay(1000);
