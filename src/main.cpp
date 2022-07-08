@@ -7,6 +7,7 @@
 #include <Wire.h>
 #include "Adafruit_VEML6070.h"
 #include <driver/i2c.h>
+//#include <debug.h>
 
 #ifndef upload_to_api
 #define upload_to_api false
@@ -26,7 +27,7 @@
 
 // Parámetros para el modo hibernación
 #define uS_TO_S_FACTOR 1000000 /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP 60       /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP 120      /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
 
 // Pantalla OLED ssd1306
@@ -75,12 +76,12 @@ const int DEBUG_HOT_MODE_INIT_PIN = 27; // Pin por el que recibe la señal para 
 bool DEBUG_HOT_MODE = false;            // Indica si se ha activado el modo debug.
 
 // DECLARO CONSTANTES
-const int THRESHOLD_VAPORIZER_AIR_HUMIDITY = 65;  // Umbral de humedad máxima para vaporizador
-const int THRESHOLD_VAPORIZER_TEMPERATURE = 35;   // Umbral de Temperatura máxima para vaporizar agua
-const int THRESHOLD_WATERPUMP_SOIL_HUMIDITY = 40; // Umbral de humedad en suelo para regar en %
-const int DURATION_MOTOR_WATER = 6000;            // Duración del motor de riego en ms
-const int THRESHOLD_SOIL_MOISURE_MAX = 3800;      // Umbral de resistencia para humedad en suelo máxima, 0%
-const int THRESHOLD_SOIL_MOISURE_MIN = 2400;      // Umbral de resistencia para humedad en suelo mínima, 100%
+const int THRESHOLD_VAPORIZER_AIR_HUMIDITY = 65;     // Umbral de humedad máxima para vaporizador
+const int THRESHOLD_VAPORIZER_TEMPERATURE = 35;      // Umbral de Temperatura máxima para vaporizar agua
+const int THRESHOLD_MIN_SOIL_MOISTURE_HUMIDITY = 40; // Umbral de humedad en suelo para regar en %
+const int DURATION_MOTOR_WATER = 5000;               // Duración del motor de riego en ms
+const int THRESHOLD_SOIL_MOISURE_MAX = 3900;         // Umbral de resistencia para humedad en suelo máxima, 0%
+const int THRESHOLD_SOIL_MOISURE_MIN = 2100;         // Umbral de resistencia para humedad en suelo mínima, 100%
 
 // Declaro variables de sensores.
 float temperature = 0.0;
@@ -103,62 +104,27 @@ float analog2LastValue = 0;
 float analog3LastValue = 0;
 float analog4LastValue = 0;
 
-// TODO → Bolean indicando si se ha leido bien, resetear al final del loop y subir a la api null si está mal leído
-
-/*
-void scanI2cSensors()
+void debug(String message)
 {
-    byte error, address;
-    int nDevices;
-    Serial.println("Scanning...");
-    nDevices = 0;
-    for (address = 1; address < 127; address++)
+    if (DEBUG || DEBUG_HOT_MODE)
     {
-        Wire.beginTransmission(address);
-        error = Wire.endTransmission();
-        if (error == 0)
-        {
-            Serial.print("I2C device found at address 0x");
-            if (address < 16)
-            {
-                Serial.print("0");
-            }
-            Serial.println(address, HEX);
-            nDevices++;
-        }
-        else if (error == 4)
-        {
-            Serial.print("Unknow error at address 0x");
-            if (address < 16)
-            {
-                Serial.print("0");
-            }
-            Serial.println(address, HEX);
-        }
+        Serial.println(message);
     }
-    if (nDevices == 0)
-    {
-        Serial.println("No I2C devices found\n");
-    }
-    else
-    {
-        Serial.println("done\n");
-    }
-    delay(2000);
 }
-*/
 
 /*
  * Realiza la conexión al wifi en caso de no estar conectado.
  */
 void wifiConnect()
 {
+    if (DEBUG || DEBUG_HOT_MODE)
+    {
+        return;
+    }
+
     if (upload_to_api && (WiFi.status() != WL_CONNECTED))
     {
-        if (DEBUG || DEBUG_HOT_MODE)
-        {
-            Serial.println("Conectando al WiFi..");
-        }
+        debug("Conectando al WiFi..");
 
         WiFi.begin(AP_NAME, AP_PASSWORD);
 
@@ -166,12 +132,11 @@ void wifiConnect()
 
         if (WiFi.status() == WL_CONNECTED)
         {
-            if (DEBUG || DEBUG_HOT_MODE)
-            {
-                Serial.println("Se ha conectado al wifi correctamente..");
-            }
+            debug("Se ha conectado al wifi correctamente..");
         }
     }
+
+    delay(2000);
 }
 
 /**
@@ -179,12 +144,12 @@ void wifiConnect()
  */
 void powerOn()
 {
-    delay(1000);
+    delay(100);
     digitalWrite(ENERGY, HIGH);
     digitalWrite(ENERGY_HIGH, HIGH);
-    delay(200);
+    delay(100);
     digitalWrite(LED_ON, HIGH);
-    delay(5000);
+    delay(1000);
 }
 
 /**
@@ -192,9 +157,9 @@ void powerOn()
  */
 void powerOff()
 {
-    delay(5000);
+    delay(100);
     digitalWrite(LED_ON, LOW);
-    delay(200);
+    delay(100);
     digitalWrite(ENERGY, LOW);
     digitalWrite(ENERGY_HIGH, LOW);
     delay(1000);
@@ -211,7 +176,7 @@ void setup()
     // Establezco salida i2c personalizada.
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
-    delay(1000);
+    delay(100);
 
     // Configuro pines digitales
     pinMode(ENERGY, OUTPUT);
@@ -221,24 +186,24 @@ void setup()
     pinMode(VAPORIZER, OUTPUT);
     pinMode(SENSOR_WATER, INPUT);
     pinMode(LED_NEED_WATER, OUTPUT);
+    pinMode(DEBUG_HOT_MODE_INIT_PIN, INPUT);
 
     digitalWrite(ENERGY, HIGH);
     digitalWrite(ENERGY_HIGH, HIGH);
     digitalWrite(LED_ON, HIGH);
+    digitalWrite(LED_NEED_WATER, HIGH);
     digitalWrite(WATER_PUMP, LOW);
     digitalWrite(VAPORIZER, LOW);
 
-    delay(3000);
+    delay(1000);
 
     if (DISPLAY_ENABLED)
     {
         display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
     }
 
-    //scanI2cSensors();
-
     /*
-    * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4096).
+    * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4095).
     * If between 9 and 12, it will equal the set hardware resolution, else value will be shifted.
     * Range is 1 - 16
     *
@@ -291,12 +256,6 @@ void setup()
     //analogSetPinAttenuation(analog4Pin, ADC_11db);
 
     /*
-    * Get value for HALL sensor (without LNA)
-    * connected to pins 36(SVP) and 39(SVN)
-    * */
-    //hallRead();
-
-    /*
     * Non-Blocking API (almost)
     *
     * Note: ADC conversion can run only for single pin at a time.
@@ -345,16 +304,12 @@ void setup()
     delay(300);
 
     // Conectando al wifi
-    if (!DEBUG)
-    {
-        wifiConnect();
-        delay(500);
-    }
+    wifiConnect();
 
     // Inicializo la lectura del sensor VEML6070
     if (VEML6070_ENABLED)
     {
-        Serial.println("Inicializando sensor UV VEML6070");
+        debug("Inicializando sensor UV VEML6070");
         uv.begin(VEML6070_1_T);
 
         delay(300);
@@ -363,14 +318,11 @@ void setup()
     // Inicializo pantalla oled ssd1306 - Address 0x3D for 128x64
     if (DISPLAY_ENABLED)
     {
-        if (DEBUG || DEBUG_HOT_MODE)
-        {
-            Serial.println("Inicializando pantalla SSD1306");
-        }
+        debug("Inicializando pantalla SSD1306");
 
         while (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
         {
-            Serial.println(F("SSD1306 allocation failed"));
+            debug("SSD1306 allocation failed");
             delay(10000);
         }
 
@@ -382,7 +334,7 @@ void setup()
         display.drawBitmap(0, 0, logo3, 128, 64, 1);
         display.display();
 
-        delay(2000);
+        delay(1000);
     }
 
     // Inicializo la lectura del sensor BME280
@@ -398,14 +350,13 @@ void setup()
             display.display();
         }
 
-        Serial.println(F("Could not find a valid BME280 sensor, check wiring or "
-                         "try a different address!"));
+        debug("Could not find a valid BME280 sensor, check wiring or try a different address!");
 
         delay(5000);
 
         while (!bme.begin(BME_ADDRESS))
         {
-            Serial.println(F("Intenando conectar al Sensor BME"));
+            debug("Intenando conectar al Sensor BME");
             delay(10000);
         }
     }
@@ -420,7 +371,7 @@ void setup()
  * tierra y devuelvo el porcentaje relativo dentro del rango de trabajo.
  * En seco, el sensor capacitivo puede rondar los 2000 de mínimo (no llega a 0)
  */
-int calcSoilMoisure(int res)
+int calcSoilMoisture(int res)
 {
     int max = THRESHOLD_SOIL_MOISURE_MAX; // Max resistencia es 4095
     int min = THRESHOLD_SOIL_MOISURE_MIN;
@@ -452,22 +403,22 @@ void readAnalogicSensors()
 
     // Sensor para la humedad de la tierra.
     analog1LastValue = analogRead(PIN_SOIL_MOISTURE_A0);
-    soil_humidity_1 = calcSoilMoisure(analog1LastValue);
+    soil_humidity_1 = calcSoilMoisture(analog1LastValue);
 
     delay(1000);
 
     analog2LastValue = analogRead(PIN_SOIL_MOISTURE_A1);
-    soil_humidity_2 = calcSoilMoisure(analog2LastValue);
+    soil_humidity_2 = calcSoilMoisture(analog2LastValue);
 
     delay(1000);
 
     analog3LastValue = analogRead(PIN_SOIL_MOISTURE_A2);
-    soil_humidity_3 = calcSoilMoisure(analog3LastValue);
+    soil_humidity_3 = calcSoilMoisture(analog3LastValue);
 
     delay(1000);
 
     analog4LastValue = analogRead(PIN_SOIL_MOISTURE_A3);
-    soil_humidity_4 = calcSoilMoisure(analog4LastValue);
+    soil_humidity_4 = calcSoilMoisture(analog4LastValue);
 
     delay(1000);
 }
@@ -477,6 +428,11 @@ void readAnalogicSensors()
  */
 void printResumeBySerial()
 {
+    if (!DEBUG && !DEBUG_HOT_MODE)
+    {
+        return;
+    }
+
     Serial.println();
     Serial.println("----------------------");
     Serial.print("Soil Moisure Analog 0 → ");
@@ -550,22 +506,11 @@ void printResumeBySerial()
 }
 
 /**
- * Imprime los datos de las lecturas por la pantalla externa.
+ * Muestra por la pantalla animación para la lectura de datos.
  */
-void printResumeByDisplay()
+void displayShowAnimation()
 {
-    if (!DISPLAY_ENABLED)
-    {
-        return;
-    }
-
-    Serial.println("Mostrando datos por la pantalla\n");
-
-    // Limpio el buffer de la pantalla.
     display.clearDisplay();
-
-    // Muestro logotipos como animación de carga
-    //display.clearDisplay();
     display.drawBitmap(0, 0, logo, 128, 64, 1);
     display.display();
 
@@ -582,6 +527,19 @@ void printResumeByDisplay()
     display.display();
 
     delay(150);
+}
+
+/**
+ * Imprime los datos de las lecturas por la pantalla externa.
+ */
+void displayShowResume()
+{
+    if (!DISPLAY_ENABLED)
+    {
+        return;
+    }
+
+    debug("Mostrando datos por la pantalla");
 
     display.clearDisplay();
     display.setTextSize(1);
@@ -639,8 +597,19 @@ void printResumeByDisplay()
     display.display();
 }
 
+/**
+ * Recibe un porcentaje de humedad en tierra y devuelve si está por encima
+ * del umbral de humedad mínimo declarado para el suelo.
+ */
+bool getSoilMoistureNeedWater(float soil_humidity)
+{
+    return bool(soil_humidity < THRESHOLD_MIN_SOIL_MOISTURE_HUMIDITY);
+}
+
 void uploadDataToApi(String PLANT_ID, float soilMoisureRaw, int soilPorcent)
 {
+    wifiConnect();
+
     if (!PLANT_ID || PLANT_ID == "")
     {
         Serial.println("No se ha configurado: " + PLANT_ID);
@@ -662,10 +631,11 @@ void uploadDataToApi(String PLANT_ID, float soilMoisureRaw, int soilPorcent)
                         ",\"full_water_tank\":" + (String)full_water_tank +
                         ",\"waterpump_enabled\":" + (String)waterPump_status +
                         ",\"vaporizer_enabled\":" + (String)vaporizer_status +
+                        ",\"need_water\":" + getSoilMoistureNeedWater(float(soilPorcent)) +
                         "}";
 
-        Serial.println("Parámetros json: ");
-        Serial.println(params);
+        debug("Parámetros json: ");
+        debug(params);
 
         //http.begin("https://api.fryntiz.dev/smartplant/register/add-json");
         http.begin((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
@@ -679,32 +649,41 @@ void uploadDataToApi(String PLANT_ID, float soilMoisureRaw, int soilPorcent)
         // Respuesta de la API
         auto response = http.getString();
 
-        Serial.println("Stream:");
-        Serial.println(http.getStream());
-        Serial.println("Response:");
-        Serial.println(response);
+        debug("Stream:");
 
-        Serial.println("Código de respuesta de la API: ");
-        Serial.println(httpCode);
+        if (DEBUG || DEBUG_HOT_MODE)
+        {
+            Serial.println(http.getStream());
 
-        Serial.println("Ruta de la api: ");
-        Serial.println((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
+            debug("Response:");
+            Serial.println(response);
+
+            debug("Código de respuesta de la API: ");
+            Serial.println(httpCode);
+        }
+
+        debug("Ruta de la api: ");
+        debug((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
 
         // Indica que ha terminado de transmitirse el post.
         http.end();
     }
     else
     {
-        Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
+        debug("No se ha conectado al WIFI, no se inicia la subida a la API");
     }
+
+    delay(300);
 }
 
 /**
  * Comprueba si se detecta agua.
  */
-void getWaterTank()
+bool getWaterTank()
 {
     full_water_tank = digitalRead(SENSOR_WATER);
+
+    return bool(full_water_tank);
 }
 
 /**
@@ -712,8 +691,11 @@ void getWaterTank()
  */
 void waterPump()
 {
+    // Compruebo tanque de agua.
+    getWaterTank();
+
     // Enciende el motor cuando la humedad del suelo es menor al 35%
-    if (soil_humidity_1 < THRESHOLD_WATERPUMP_SOIL_HUMIDITY)
+    if (getSoilMoistureNeedWater(soil_humidity_1))
     {
 
         // Enciendo led indicando que necesita agua
@@ -762,6 +744,9 @@ void waterPump()
  */
 void vaporizer()
 {
+    // Compruebo tanque de agua.
+    getWaterTank();
+
     // Enciende el vaporizador cuando la humedad y temperatura no sobrepasan el umbral predefinido.
     if ((humidity < THRESHOLD_VAPORIZER_AIR_HUMIDITY) && (temperature < THRESHOLD_VAPORIZER_TEMPERATURE))
     {
@@ -896,47 +881,8 @@ void readLight()
     uv_quantity = get_uv;
 }
 
-void loop()
+void readAllSensors()
 {
-    // Enciendo todo el circuito de corriente.
-    powerOn();
-
-    // TODO → Comprobar si hay entrada para modo debug y hacer toggle de DEBUG_HOT_MODE
-
-    if (digitalRead(DEBUG_HOT_MODE_INIT_PIN))
-    {
-        DEBUG_HOT_MODE = !DEBUG_HOT_MODE;
-    }
-
-    delay(2000);
-
-    if (need_water)
-    {
-        digitalWrite(LED_NEED_WATER, HIGH);
-    }
-
-    if (DEBUG || DEBUG_HOT_MODE)
-    {
-        Serial.println("");
-        Serial.println("---------------------------------------");
-        Serial.println("Comienza el loop");
-    }
-
-    if (DISPLAY_ENABLED)
-    {
-        display.clearDisplay();
-        display.drawBitmap(0, 0, logo3, 128, 64, 1);
-        display.display();
-    }
-
-    if (!DEBUG && !DEBUG_HOT_MODE)
-    {
-        // Compruebo si está conectado a la red Wireless
-        wifiConnect();
-
-        delay(5000);
-    }
-
     // Leo todos los pines analógicos.
     readAnalogicSensors();
 
@@ -949,21 +895,59 @@ void loop()
     // Compruebo tanque de agua.
     getWaterTank();
 
-    // Compruebo si necesita regar.
+    need_water = getSoilMoistureNeedWater(soil_humidity_1);
+}
+
+void loop()
+{
+    // Comprobando si se ha pulsado iniciar en modo debug
+    if (digitalRead(DEBUG_HOT_MODE_INIT_PIN))
+    {
+        DEBUG_HOT_MODE = true;
+    }
+
+    // Enciendo todo el circuito de corriente.
+    powerOn();
+
+    delay(2000);
+
+    if (need_water)
+    {
+        digitalWrite(LED_NEED_WATER, HIGH);
+    }
+
+    debug("");
+    debug("---------------------------------------");
+    debug("Comienza el loop");
+
+    // Compruebo si está conectado a la red Wireless
+    wifiConnect();
+
+    // Muestra animación indicando que se leerán los datos.
+    displayShowAnimation();
+
+    // Lee todos los sensores.
+    readAllSensors();
+
+    // Muestra resumen de las lecturas por pantalla.
+    displayShowResume();
+
+    // Riega si es necesario.
     waterPump();
 
-    // Compruebo tanque de agua.
-    getWaterTank();
+    // Muestro los datos por pantalla.
+    displayShowResume();
 
-    // Compruebo si necesita encender el vaporizador.
+    // Vaporiza si es necesario.
     vaporizer();
 
     // Muestro los datos por pantalla.
-    printResumeByDisplay();
+    displayShowResume();
 
     // Subo los datos a la API
     if (upload_to_api && !DEBUG && !DEBUG_HOT_MODE)
     {
+        delay(300);
         uploadDataToApi((String)PLANT_ID_1, analog1LastValue, soil_humidity_1);
         uploadDataToApi((String)PLANT_ID_2, analog2LastValue, soil_humidity_2);
         uploadDataToApi((String)PLANT_ID_3, analog3LastValue, soil_humidity_3);
@@ -973,17 +957,26 @@ void loop()
     // Habilito y establezco hibernación para ahorrar baterías.
     bootCount = bootCount + 1;
 
-    // Muestro los datos por Serial.
+    // Muestra animación indicando que se leerán los datos.
+    displayShowAnimation();
+
+    // Leo de nuevo los sensores tras los eventos anteriores.
+    readAllSensors();
+
+    // Muestro los datos por pantalla.
+    displayShowResume();
+
+    // Muestro los datos por Serial si está en modo DEBUG o DEBUG_HOT_MODE.
+    printResumeBySerial();
+
+    debug("Termina el loop");
+    debug("---------------------------------------");
+    debug("");
+    debug("Contador de veces despierto: ");
+
     if (DEBUG || DEBUG_HOT_MODE)
     {
-        printResumeBySerial();
-
-        Serial.println("Termina el loop");
-        Serial.println("---------------------------------------");
-        Serial.println("");
-
-        Serial.print("Contador de veces despierto: ");
-        Serial.println(bootCount);
+        Serial.print(bootCount);
     }
 
     // Reestablezco marcas de riego.
@@ -991,26 +984,12 @@ void loop()
     vaporizer_status = false;
     full_water_tank = false;
 
-    // Leo todos los pines analógicos.
-    readAnalogicSensors();
-
-    // Leo sensores por i2c
-    readTemperature();
-    readHumidity();
-    readPressure();
-    readLight();
-
-    need_water = soil_humidity_1 < THRESHOLD_WATERPUMP_SOIL_HUMIDITY;
-
     if (need_water)
     {
         digitalWrite(LED_NEED_WATER, HIGH);
     }
 
-    delay(10000);
-
-    // Apago todo el circuito de corriente.
-    powerOff();
+    delay(2000);
 
     if (DEBUG || DEBUG_HOT_MODE)
     {
@@ -1018,6 +997,9 @@ void loop()
     }
     else
     {
+        // Apago todo el circuito de corriente.
+        powerOff();
+
         // Duerme el ESP32 durante el tiempo establecido
         esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
         esp_deep_sleep_start();
