@@ -1,7 +1,13 @@
 #include <Arduino.h>
 #include <string>
-
 #include <api.cpp>
+#include <logos.h>
+#include "WiFi.h"
+#include <HTTPClient.h>
+#include <Wire.h>
+#include "Adafruit_VEML6070.h"
+#include <driver/i2c.h>
+//#include <debug.h>
 
 #ifndef upload_to_api
 #define upload_to_api false
@@ -11,431 +17,156 @@
 #define API_PORT ""
 #define API_PATH ""
 #define API_TOKEN_BEARER ""
-#define PLANT_ID ""
+#define DEVICE_ID ""
+#define PLANT_ID_1 ""
+#define PLANT_ID_2 ""
+#define PLANT_ID_3 ""
+#define PLANT_ID_4 ""
+
 #endif
 
-#include "WiFi.h"
-#include <HTTPClient.h>
-
-#include "DHT.h"
-
-#include <Wire.h>
-#include "Adafruit_VEML6070.h"
-#include <driver/i2c.h>
-
 // Parámetros para el modo hibernación
-#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-//#define TIME_TO_SLEEP  108000    /* Time ESP32 will go to sleep (in seconds) */
-#define TIME_TO_SLEEP  300        /* Time ESP32 will go to sleep (in seconds) */
+#define uS_TO_S_FACTOR 1000000 /* Conversion factor for micro seconds to seconds */
+#define TIME_TO_SLEEP 120      /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
 
 // Pantalla OLED ssd1306
 #include <Adafruit_SSD1306.h>
 
-// Módulo reloj RTC DS1307
-#define DS3231_I2C_ADDRESS 0x68
-//#define DS3231_I2C_ADDRESS 0x50
+// Importo librería para sensor BME280
+#include <Adafruit_BME280.h>
+Adafruit_BME280 bme;
+float BME_ADDRESS = 0x76;
+bool BME_ENABLED = true; // Indica si se habilita el sensor
 
-// Pin usado para el sensor de temperatura y humedad DHT.
-#define DHTPIN 18
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
+// Instancio sensor para rayos UV
+bool VEML6070_ENABLED = true;
+Adafruit_VEML6070 uv = Adafruit_VEML6070();
+
+// Instancio pantalla ssd1306
+bool DISPLAY_ENABLED = true; // Indica si habilita la pantalla
+#define OLED_RESET -1        // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_WIDTH 128     // OLED display width, in pixels
+#define SCREEN_HEIGHT 64     // OLED display height, in pixels
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Pines para i2c
+const int I2C_SDA_PIN = 21;
+const int I2C_SCL_PIN = 22;
+
+// Declaro los pines digitales
+const int LED_ON = 2;         // Pin para indicar que está encendido el circuito.
+const int ENERGY = 17;        // Alimenta la energía de todo el circuito de 3,3v
+const int ENERGY_HIGH = 16;   // Alimenta la energía de todo el circuito de 5v
+const int WATER_PUMP = 18;    // Bomba de agua
+const int VAPORIZER = 19;     // Vaporizador de agua
+const int SENSOR_WATER = 23;  // Sensor para el tanque de agua
+const int LED_NEED_WATER = 4; // Led para avisar que se necesita agua.
+
+// Declaro los pines analógicos para lectura de humedad del suelo.
+const int PIN_SOIL_MOISTURE_A0 = 39;
+const int PIN_SOIL_MOISTURE_A1 = 35;
+const int PIN_SOIL_MOISTURE_A2 = 33;
+const int PIN_SOIL_MOISTURE_A3 = 34;
+
+// Constante para forzar DEBUG, sin subir datos a la API ni dormir esp32
+const bool DEBUG = false;
+const int DEBUG_HOT_MODE_INIT_PIN = 27; // Pin por el que recibe la señal para iniciar DEBUG en funcionamiento.
+bool DEBUG_HOT_MODE = false;            // Indica si se ha activado el modo debug.
+
+// DECLARO CONSTANTES
+const int THRESHOLD_VAPORIZER_AIR_HUMIDITY = 65;     // Umbral de humedad máxima para vaporizador
+const int THRESHOLD_VAPORIZER_TEMPERATURE = 35;      // Umbral de Temperatura máxima para vaporizar agua
+const int THRESHOLD_MIN_SOIL_MOISTURE_HUMIDITY = 40; // Umbral de humedad en suelo para regar en %
+const int DURATION_MOTOR_WATER = 5000;               // Duración del motor de riego en ms
+const int THRESHOLD_SOIL_MOISURE_MAX = 3900;         // Umbral de resistencia para humedad en suelo máxima, 0%
+const int THRESHOLD_SOIL_MOISURE_MIN = 2100;         // Umbral de resistencia para humedad en suelo mínima, 100%
 
 // Declaro variables de sensores.
 float temperature = 0.0;
 float humidity = 0.0;
+float pressure = 0.0; // Presión atmosférica
 float uv_quantity = 0.0;
 float uv_index = 0.0;
-float soil_humidity = 0.0; // Porcentaje de humedad en el suelo.
-boolean waterPump_status = false;  // Indica si se ha regado en esta iteración del loop.
-boolean vaporizer_status = false;  // Indica si se ha vaporizado en esta iteración del loop.
-boolean full_water_tank = true;  // Indica si el tanque tiene agua.
-
-// Declaro los pines analógicos.
-const int analog1Pin = 36;
-const int analog2Pin = 39;
-const int analog3Pin = 34;
-const int analog4Pin = 35;
-const int analog5Pin = 32;
-const int analog6Pin = 33;
+float soil_humidity_1 = 0.0;
+float soil_humidity_2 = 0.0;
+float soil_humidity_3 = 0.0;
+float soil_humidity_4 = 0.0;
+bool waterPump_status = false; // Indica si se ha regado en esta iteración del loop.
+bool vaporizer_status = false; // Indica si se ha vaporizado en esta iteración del loop.
+bool full_water_tank = false;  // Indica si el tanque tiene agua.
+bool need_water = false;       // Indica si es necesario regar, para encender led avisando
 
 // Declaro funciones para almacenar el último valor de los pines analógicos.
 float analog1LastValue = 0;
 float analog2LastValue = 0;
 float analog3LastValue = 0;
 float analog4LastValue = 0;
-float analog5LastValue = 0;
-float analog6LastValue = 0;
 
-// Declaro los pines digitales
-const int WATER_PUMP = 13;  // Bomba de agua
-const int VAPORIZER = 15;   // Vaporizador de agua
-
-// Instancio sensor para rayos UV
-Adafruit_VEML6070 uv = Adafruit_VEML6070();
-
-// Instancio pantalla ssd1306
-#define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
-
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-
-const unsigned char logo [] PROGMEM=
+void debug(String message)
 {
-0xFF, 0xFF, 0xFF, 0xF9, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xE3, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xC3, 0xFC, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0x83, 0xFC, 0x1F, 0xFE, 0x3F, 0x00, 0xF8, 0x3C, 0x03, 0xC6, 0x18, 0x70, 0x07,
-0xFF, 0xFF, 0xFF, 0x03, 0xFC, 0x0F, 0xFE, 0x3E, 0x00, 0x78, 0x3C, 0x41, 0xC6, 0x08, 0x60, 0x07,
-0xFF, 0xFF, 0xFE, 0x33, 0xFC, 0xC7, 0xFE, 0x3E, 0x18, 0x70, 0x1C, 0x70, 0xC6, 0x08, 0x61, 0xFF,
-0xFF, 0xFF, 0xFC, 0x73, 0xFC, 0xE3, 0xFE, 0x3C, 0x3C, 0x30, 0x1C, 0x70, 0xC6, 0x00, 0x43, 0xFF,
-0xFF, 0xFF, 0xF8, 0xF3, 0xFC, 0xF1, 0xFE, 0x3C, 0x3C, 0x31, 0x1C, 0x78, 0xC6, 0x00, 0x43, 0x07,
-0xFF, 0xFF, 0xF1, 0xF3, 0xFC, 0xF8, 0xFE, 0x3C, 0x3C, 0x21, 0x0C, 0x78, 0xC6, 0x00, 0x43, 0x87,
-0xFF, 0xFF, 0xE3, 0xF0, 0x00, 0xFC, 0x7E, 0x3C, 0x3C, 0x20, 0x0C, 0x70, 0xC6, 0x20, 0x43, 0x87,
-0xFF, 0xFF, 0xC7, 0xC0, 0x00, 0x3E, 0x3E, 0x3E, 0x18, 0x43, 0x8C, 0x70, 0xC6, 0x20, 0x61, 0x87,
-0xFF, 0xFF, 0x8E, 0x07, 0xFE, 0x07, 0x1E, 0x3E, 0x00, 0x43, 0x84, 0x41, 0xC6, 0x30, 0x60, 0x07,
-0xFF, 0xFF, 0x1C, 0x3F, 0xFF, 0xC3, 0x8E, 0x01, 0x00, 0xC7, 0x84, 0x03, 0xC6, 0x38, 0x70, 0x07,
-0xFF, 0xFC, 0x30, 0xFF, 0xFF, 0xF0, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF8, 0x61, 0xFC, 0x03, 0xF8, 0x61, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF0, 0xC7, 0xE0, 0x00, 0x7E, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xE1, 0x8F, 0x80, 0x00, 0x1F, 0x18, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xC7, 0x1F, 0x00, 0x00, 0x0F, 0x8E, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0x8F, 0x3C, 0x00, 0x00, 0x03, 0xCF, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0x1E, 0x78, 0x00, 0x00, 0x01, 0xE7, 0x8F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFE, 0x3C, 0x70, 0x00, 0x00, 0x00, 0xE3, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFC, 0x7C, 0xF0, 0x00, 0x00, 0x00, 0xF3, 0xE3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xF8, 0xF8, 0xE0, 0x00, 0x00, 0x00, 0x71, 0xF1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xF1, 0xF9, 0xE0, 0x00, 0x00, 0x00, 0x79, 0xF8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xE3, 0xF9, 0xC0, 0x00, 0x00, 0x00, 0x39, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xC7, 0xF3, 0xC0, 0x00, 0x00, 0x00, 0x3C, 0xFE, 0x3F, 0xFF, 0xFF, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xE7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x7F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xC7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x3F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x07, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x0F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x07, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x0F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x87, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x1F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xE7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x7F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xC7, 0xF3, 0xC0, 0x00, 0x00, 0x00, 0x3C, 0xFE, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xE3, 0xF9, 0xC0, 0x00, 0x00, 0x00, 0x39, 0xFC, 0x47, 0xC0, 0x0C, 0x20, 0x21, 0x18, 0x0F, 0x01,
-0xF1, 0xF9, 0xE0, 0x00, 0x00, 0x00, 0x79, 0xF8, 0xC7, 0xC7, 0x84, 0x23, 0xE1, 0x18, 0x06, 0x01,
-0xF8, 0xF8, 0xE0, 0x00, 0x00, 0x00, 0x71, 0xF1, 0xC7, 0xC7, 0xC0, 0x63, 0xE0, 0x18, 0xC0, 0x30,
-0xFC, 0x7C, 0xF0, 0x00, 0x00, 0x00, 0xF3, 0xE3, 0xC7, 0xC7, 0xC0, 0xE3, 0xE0, 0x18, 0xC0, 0x38,
-0xFE, 0x3C, 0x70, 0x00, 0x00, 0x00, 0xE3, 0xC7, 0xC7, 0xC0, 0xE0, 0xE0, 0x60, 0x18, 0xC0, 0x78,
-0xFF, 0x1E, 0x78, 0x00, 0x00, 0x01, 0xE7, 0x8F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE0, 0x18, 0xC0, 0x38,
-0xFF, 0x8F, 0x3C, 0x00, 0x00, 0x03, 0xCF, 0x1F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE0, 0x18, 0xC0, 0x30,
-0xFF, 0xC7, 0x1F, 0x00, 0x00, 0x0F, 0x8E, 0x3F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE2, 0x18, 0x06, 0x01,
-0xFF, 0xE1, 0x8F, 0x80, 0x00, 0x1F, 0x18, 0x7F, 0xC0, 0x40, 0x71, 0xE0, 0x22, 0x18, 0x0F, 0x01,
-0xFF, 0xF0, 0xC7, 0xE0, 0x00, 0x7E, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF8, 0x61, 0xFC, 0x03, 0xF8, 0x61, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFC, 0x30, 0xFF, 0xFF, 0xF0, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0x1C, 0x3F, 0xFF, 0xC3, 0x8F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0x8E, 0x07, 0xFE, 0x07, 0x1F, 0x80, 0xC0, 0x42, 0x30, 0x1C, 0x06, 0x03, 0x01, 0x01,
-0xFF, 0xFF, 0xC7, 0xC0, 0x00, 0x3E, 0x3F, 0x80, 0xC7, 0xC2, 0x30, 0x18, 0x06, 0x03, 0x1F, 0x01,
-0xFF, 0xFF, 0xE3, 0xF0, 0x00, 0xFC, 0x7F, 0x0F, 0xC7, 0xC0, 0x21, 0xF0, 0xC2, 0x23, 0x1E, 0x1F,
-0xFF, 0xFF, 0xF1, 0xF3, 0xFC, 0xF8, 0xFF, 0x01, 0xC7, 0xC0, 0x20, 0x30, 0xE2, 0x03, 0x1E, 0x03,
-0xFF, 0xFF, 0xF8, 0xF3, 0xFC, 0xF1, 0xFF, 0x80, 0xC0, 0xC0, 0x30, 0x11, 0xE2, 0x03, 0x03, 0x01,
-0xFF, 0xFF, 0xFC, 0x73, 0xFC, 0xE3, 0xFF, 0xC0, 0xC7, 0xC0, 0x38, 0x10, 0xE2, 0x03, 0x1F, 0x81,
-0xFF, 0xFF, 0xFE, 0x33, 0xFC, 0xC7, 0xFF, 0xF8, 0xC7, 0xC0, 0x3F, 0x10, 0xC2, 0x21, 0x1F, 0xF1,
-0xFF, 0xFF, 0xFF, 0x03, 0xFC, 0x0F, 0xFF, 0x00, 0xC7, 0xC4, 0x20, 0x18, 0x06, 0x21, 0x1E, 0x01,
-0xFF, 0xFF, 0xFF, 0x83, 0xFC, 0x1F, 0xFF, 0x00, 0xC0, 0x44, 0x20, 0x1C, 0x06, 0x31, 0x00, 0x01,
-0xFF, 0xFF, 0xFF, 0xC3, 0xFC, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xE3, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xF9, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-};
-
-
-const unsigned char logo2 [] PROGMEM=
-{
-0xFF, 0xFF, 0xFF, 0xF9, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xE3, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xC3, 0xFC, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0x83, 0xFC, 0x1F, 0xFE, 0x3F, 0x00, 0xF8, 0x3C, 0x03, 0xC6, 0x18, 0x70, 0x07,
-0xFF, 0xFF, 0xFF, 0x03, 0xFC, 0x0F, 0xFE, 0x3E, 0x00, 0x78, 0x3C, 0x41, 0xC6, 0x08, 0x60, 0x07,
-0xFF, 0xFF, 0xFE, 0x33, 0xFC, 0xC7, 0xFE, 0x3E, 0x18, 0x70, 0x1C, 0x70, 0xC6, 0x08, 0x61, 0xFF,
-0xFF, 0xFF, 0xFC, 0x73, 0xFC, 0xE3, 0xFE, 0x3C, 0x3C, 0x30, 0x1C, 0x70, 0xC6, 0x00, 0x43, 0xFF,
-0xFF, 0xFF, 0xF8, 0xF3, 0xFC, 0xF1, 0xFE, 0x3C, 0x3C, 0x31, 0x1C, 0x78, 0xC6, 0x00, 0x43, 0x07,
-0xFF, 0xFF, 0xF1, 0xF3, 0xFC, 0xF8, 0xFE, 0x3C, 0x3C, 0x21, 0x0C, 0x78, 0xC6, 0x00, 0x43, 0x87,
-0xFF, 0xFF, 0xE3, 0xF0, 0x00, 0xFC, 0x7E, 0x3C, 0x3C, 0x20, 0x0C, 0x70, 0xC6, 0x20, 0x43, 0x87,
-0xFF, 0xFF, 0xC7, 0xC0, 0x00, 0x3E, 0x3E, 0x3E, 0x18, 0x43, 0x8C, 0x70, 0xC6, 0x20, 0x61, 0x87,
-0xFF, 0xFF, 0x8E, 0x07, 0xFE, 0x07, 0x1E, 0x3E, 0x00, 0x43, 0x84, 0x41, 0xC6, 0x30, 0x60, 0x07,
-0xFF, 0xFF, 0x1C, 0x3F, 0xFF, 0xC3, 0x8E, 0x01, 0x00, 0xC7, 0x84, 0x03, 0xC6, 0x38, 0x70, 0x07,
-0xFF, 0xFC, 0x30, 0xFF, 0xFF, 0xF0, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF8, 0x61, 0xFC, 0x03, 0xF8, 0x61, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF0, 0xC7, 0xE0, 0x00, 0x7E, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xE1, 0x8F, 0x80, 0x00, 0x1F, 0x18, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xC7, 0x1F, 0x00, 0x00, 0x0F, 0x8E, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0x8F, 0x3C, 0x00, 0x00, 0x03, 0xCF, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0x1E, 0x78, 0x00, 0x00, 0x01, 0xE7, 0x8F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFE, 0x3C, 0x70, 0x00, 0x00, 0x00, 0xE3, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFC, 0x7C, 0xF0, 0x00, 0x00, 0x00, 0xF3, 0xE3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xF8, 0xF8, 0xE0, 0x00, 0x00, 0x00, 0x71, 0xF1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xF1, 0xF9, 0xE0, 0x00, 0x00, 0x00, 0x79, 0xF8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xE3, 0xF9, 0xC0, 0x00, 0x00, 0x00, 0x39, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xC7, 0xF3, 0xC0, 0x00, 0x00, 0x00, 0x3C, 0xFE, 0x3F, 0xFF, 0xF8, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xF8, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xF8, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xE7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x7F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xC7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x3F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x07, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x0F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x07, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x0F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x87, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x1F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xE7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x7F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xC7, 0xF3, 0xC0, 0x00, 0x00, 0x00, 0x3C, 0xFE, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xE3, 0xF9, 0xC0, 0x00, 0x00, 0x00, 0x39, 0xFC, 0x47, 0xC0, 0x0C, 0x20, 0x21, 0x18, 0x0F, 0x01,
-0xF1, 0xF9, 0xE0, 0x00, 0x00, 0x00, 0x79, 0xF8, 0xC7, 0xC7, 0x84, 0x23, 0xE1, 0x18, 0x06, 0x01,
-0xF8, 0xF8, 0xE0, 0x00, 0x00, 0x00, 0x71, 0xF1, 0xC7, 0xC7, 0xC0, 0x63, 0xE0, 0x18, 0xC0, 0x30,
-0xFC, 0x7C, 0xF0, 0x00, 0x00, 0x00, 0xF3, 0xE3, 0xC7, 0xC7, 0xC0, 0xE3, 0xE0, 0x18, 0xC0, 0x38,
-0xFE, 0x3C, 0x70, 0x00, 0x00, 0x00, 0xE3, 0xC7, 0xC7, 0xC0, 0xE0, 0xE0, 0x60, 0x18, 0xC0, 0x78,
-0xFF, 0x1E, 0x78, 0x00, 0x00, 0x01, 0xE7, 0x8F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE0, 0x18, 0xC0, 0x38,
-0xFF, 0x8F, 0x3C, 0x00, 0x00, 0x03, 0xCF, 0x1F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE0, 0x18, 0xC0, 0x30,
-0xFF, 0xC7, 0x1F, 0x00, 0x00, 0x0F, 0x8E, 0x3F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE2, 0x18, 0x06, 0x01,
-0xFF, 0xE1, 0x8F, 0x80, 0x00, 0x1F, 0x18, 0x7F, 0xC0, 0x40, 0x71, 0xE0, 0x22, 0x18, 0x0F, 0x01,
-0xFF, 0xF0, 0xC7, 0xE0, 0x00, 0x7E, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF8, 0x61, 0xFC, 0x03, 0xF8, 0x61, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFC, 0x30, 0xFF, 0xFF, 0xF0, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0x1C, 0x3F, 0xFF, 0xC3, 0x8F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0x8E, 0x07, 0xFE, 0x07, 0x1F, 0x80, 0xC0, 0x42, 0x30, 0x1C, 0x06, 0x03, 0x01, 0x01,
-0xFF, 0xFF, 0xC7, 0xC0, 0x00, 0x3E, 0x3F, 0x80, 0xC7, 0xC2, 0x30, 0x18, 0x06, 0x03, 0x1F, 0x01,
-0xFF, 0xFF, 0xE3, 0xF0, 0x00, 0xFC, 0x7F, 0x0F, 0xC7, 0xC0, 0x21, 0xF0, 0xC2, 0x23, 0x1E, 0x1F,
-0xFF, 0xFF, 0xF1, 0xF3, 0xFC, 0xF8, 0xFF, 0x01, 0xC7, 0xC0, 0x20, 0x30, 0xE2, 0x03, 0x1E, 0x03,
-0xFF, 0xFF, 0xF8, 0xF3, 0xFC, 0xF1, 0xFF, 0x80, 0xC0, 0xC0, 0x30, 0x11, 0xE2, 0x03, 0x03, 0x01,
-0xFF, 0xFF, 0xFC, 0x73, 0xFC, 0xE3, 0xFF, 0xC0, 0xC7, 0xC0, 0x38, 0x10, 0xE2, 0x03, 0x1F, 0x81,
-0xFF, 0xFF, 0xFE, 0x33, 0xFC, 0xC7, 0xFF, 0xF8, 0xC7, 0xC0, 0x3F, 0x10, 0xC2, 0x21, 0x1F, 0xF1,
-0xFF, 0xFF, 0xFF, 0x03, 0xFC, 0x0F, 0xFF, 0x00, 0xC7, 0xC4, 0x20, 0x18, 0x06, 0x21, 0x1E, 0x01,
-0xFF, 0xFF, 0xFF, 0x83, 0xFC, 0x1F, 0xFF, 0x00, 0xC0, 0x44, 0x20, 0x1C, 0x06, 0x31, 0x00, 0x01,
-0xFF, 0xFF, 0xFF, 0xC3, 0xFC, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xE3, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xF9, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-};
-
-
-const unsigned char logo3 [] PROGMEM=
-{
-0xFF, 0xFF, 0xFF, 0xF9, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xE3, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xC3, 0xFC, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0x83, 0xFC, 0x1F, 0xFE, 0x3F, 0x00, 0xF8, 0x3C, 0x03, 0xC6, 0x18, 0x70, 0x07,
-0xFF, 0xFF, 0xFF, 0x03, 0xFC, 0x0F, 0xFE, 0x3E, 0x00, 0x78, 0x3C, 0x41, 0xC6, 0x08, 0x60, 0x07,
-0xFF, 0xFF, 0xFE, 0x33, 0xFC, 0xC7, 0xFE, 0x3E, 0x18, 0x70, 0x1C, 0x70, 0xC6, 0x08, 0x61, 0xFF,
-0xFF, 0xFF, 0xFC, 0x73, 0xFC, 0xE3, 0xFE, 0x3C, 0x3C, 0x30, 0x1C, 0x70, 0xC6, 0x00, 0x43, 0xFF,
-0xFF, 0xFF, 0xF8, 0xF3, 0xFC, 0xF1, 0xFE, 0x3C, 0x3C, 0x31, 0x1C, 0x78, 0xC6, 0x00, 0x43, 0x07,
-0xFF, 0xFF, 0xF1, 0xF3, 0xFC, 0xF8, 0xFE, 0x3C, 0x3C, 0x21, 0x0C, 0x78, 0xC6, 0x00, 0x43, 0x87,
-0xFF, 0xFF, 0xE3, 0xF0, 0x00, 0xFC, 0x7E, 0x3C, 0x3C, 0x20, 0x0C, 0x70, 0xC6, 0x20, 0x43, 0x87,
-0xFF, 0xFF, 0xC7, 0xC0, 0x00, 0x3E, 0x3E, 0x3E, 0x18, 0x43, 0x8C, 0x70, 0xC6, 0x20, 0x61, 0x87,
-0xFF, 0xFF, 0x8E, 0x07, 0xFE, 0x07, 0x1E, 0x3E, 0x00, 0x43, 0x84, 0x41, 0xC6, 0x30, 0x60, 0x07,
-0xFF, 0xFF, 0x1C, 0x3F, 0xFF, 0xC3, 0x8E, 0x01, 0x00, 0xC7, 0x84, 0x03, 0xC6, 0x38, 0x70, 0x07,
-0xFF, 0xFC, 0x30, 0xFF, 0xFF, 0xF0, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF8, 0x61, 0xFC, 0x03, 0xF8, 0x61, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF0, 0xC7, 0xE0, 0x00, 0x7E, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xE1, 0x8F, 0x80, 0x00, 0x1F, 0x18, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xC7, 0x1F, 0x00, 0x00, 0x0F, 0x8E, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0x8F, 0x3C, 0x00, 0x00, 0x03, 0xCF, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0x1E, 0x78, 0x00, 0x00, 0x01, 0xE7, 0x8F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFE, 0x3C, 0x70, 0x00, 0x00, 0x00, 0xE3, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFC, 0x7C, 0xF0, 0x00, 0x00, 0x00, 0xF3, 0xE3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xF8, 0xF8, 0xE0, 0x00, 0x00, 0x00, 0x71, 0xF1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xF1, 0xF9, 0xE0, 0x00, 0x00, 0x00, 0x79, 0xF8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xE3, 0xF9, 0xC0, 0x00, 0x00, 0x00, 0x39, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xC7, 0xF3, 0xC0, 0x00, 0x00, 0x00, 0x3C, 0xFE, 0x3F, 0xFF, 0xE3, 0x18, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xE3, 0x18, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xE3, 0x18, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xE7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x7F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xC7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x3F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x07, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x0F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x07, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x0F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0x87, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x1F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xE7, 0x80, 0x00, 0x00, 0x00, 0x1E, 0x7F, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xCF, 0xF3, 0x80, 0x00, 0x00, 0x00, 0x1C, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xC7, 0xF3, 0xC0, 0x00, 0x00, 0x00, 0x3C, 0xFE, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xE3, 0xF9, 0xC0, 0x00, 0x00, 0x00, 0x39, 0xFC, 0x47, 0xC0, 0x0C, 0x20, 0x21, 0x18, 0x0F, 0x01,
-0xF1, 0xF9, 0xE0, 0x00, 0x00, 0x00, 0x79, 0xF8, 0xC7, 0xC7, 0x84, 0x23, 0xE1, 0x18, 0x06, 0x01,
-0xF8, 0xF8, 0xE0, 0x00, 0x00, 0x00, 0x71, 0xF1, 0xC7, 0xC7, 0xC0, 0x63, 0xE0, 0x18, 0xC0, 0x30,
-0xFC, 0x7C, 0xF0, 0x00, 0x00, 0x00, 0xF3, 0xE3, 0xC7, 0xC7, 0xC0, 0xE3, 0xE0, 0x18, 0xC0, 0x38,
-0xFE, 0x3C, 0x70, 0x00, 0x00, 0x00, 0xE3, 0xC7, 0xC7, 0xC0, 0xE0, 0xE0, 0x60, 0x18, 0xC0, 0x78,
-0xFF, 0x1E, 0x78, 0x00, 0x00, 0x01, 0xE7, 0x8F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE0, 0x18, 0xC0, 0x38,
-0xFF, 0x8F, 0x3C, 0x00, 0x00, 0x03, 0xCF, 0x1F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE0, 0x18, 0xC0, 0x30,
-0xFF, 0xC7, 0x1F, 0x00, 0x00, 0x0F, 0x8E, 0x3F, 0xC7, 0xC7, 0xF1, 0xE3, 0xE2, 0x18, 0x06, 0x01,
-0xFF, 0xE1, 0x8F, 0x80, 0x00, 0x1F, 0x18, 0x7F, 0xC0, 0x40, 0x71, 0xE0, 0x22, 0x18, 0x0F, 0x01,
-0xFF, 0xF0, 0xC7, 0xE0, 0x00, 0x7E, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xF8, 0x61, 0xFC, 0x03, 0xF8, 0x61, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFC, 0x30, 0xFF, 0xFF, 0xF0, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0x1C, 0x3F, 0xFF, 0xC3, 0x8F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0x8E, 0x07, 0xFE, 0x07, 0x1F, 0x80, 0xC0, 0x42, 0x30, 0x1C, 0x06, 0x03, 0x01, 0x01,
-0xFF, 0xFF, 0xC7, 0xC0, 0x00, 0x3E, 0x3F, 0x80, 0xC7, 0xC2, 0x30, 0x18, 0x06, 0x03, 0x1F, 0x01,
-0xFF, 0xFF, 0xE3, 0xF0, 0x00, 0xFC, 0x7F, 0x0F, 0xC7, 0xC0, 0x21, 0xF0, 0xC2, 0x23, 0x1E, 0x1F,
-0xFF, 0xFF, 0xF1, 0xF3, 0xFC, 0xF8, 0xFF, 0x01, 0xC7, 0xC0, 0x20, 0x30, 0xE2, 0x03, 0x1E, 0x03,
-0xFF, 0xFF, 0xF8, 0xF3, 0xFC, 0xF1, 0xFF, 0x80, 0xC0, 0xC0, 0x30, 0x11, 0xE2, 0x03, 0x03, 0x01,
-0xFF, 0xFF, 0xFC, 0x73, 0xFC, 0xE3, 0xFF, 0xC0, 0xC7, 0xC0, 0x38, 0x10, 0xE2, 0x03, 0x1F, 0x81,
-0xFF, 0xFF, 0xFE, 0x33, 0xFC, 0xC7, 0xFF, 0xF8, 0xC7, 0xC0, 0x3F, 0x10, 0xC2, 0x21, 0x1F, 0xF1,
-0xFF, 0xFF, 0xFF, 0x03, 0xFC, 0x0F, 0xFF, 0x00, 0xC7, 0xC4, 0x20, 0x18, 0x06, 0x21, 0x1E, 0x01,
-0xFF, 0xFF, 0xFF, 0x83, 0xFC, 0x1F, 0xFF, 0x00, 0xC0, 0x44, 0x20, 0x1C, 0x06, 0x31, 0x00, 0x01,
-0xFF, 0xFF, 0xFF, 0xC3, 0xFC, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xE3, 0xFC, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xF9, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-};
-
-// Pines para i2c
-const int I2C_SDA_PIN = 19;
-const int I2C_SCL_PIN = 23;
-
-// Convert normal decimal numbers to binary coded decimal
-byte decToBcd(byte val){
-    return( (val/10*16) + (val%10) );
-}
-// Convert binary coded decimal to normal decimal numbers
-byte bcdToDec(byte val){
-    return( (val/16*10) + (val%16) );
-}
-
-/**
- * Establece timestamp en el módulo RTC DS3231.
- */
-bool setClock(byte second, byte minute, byte hour, byte dayOfWeek, byte
-dayOfMonth, byte month, byte year){
-
-    Serial.println("Estableciendo fecha en reloj");
-
-    /*
-    // sets time and date data to DS3231
-    Wire.beginTransmission(DS3231_I2C_ADDRESS);
-    Wire.write(0); // set next input to start at the seconds register
-    Wire.write(decToBcd(second)); // set seconds
-    Wire.write(decToBcd(minute)); // set minutes
-    Wire.write(decToBcd(hour)); // set hours
-    Wire.write(decToBcd(dayOfWeek)); // set day of week (1=Sunday, 7=Saturday)
-    Wire.write(decToBcd(dayOfMonth)); // set date (1 to 31)
-    Wire.write(decToBcd(month)); // set month
-    Wire.write(decToBcd(year)); // set year (0 to 99)
-    Wire.endTransmission();
-    */
-
-    // Escribir la dirección del registro segundero
-    Wire.write(0x00);
-
-    // Escribir valores en los registros, nos aseguramos que el bit clock halt
-    // en el registro del segundero este desactivado (esto hace que el reloj funcione)
-    Wire.write(decToBcd(second & 0x7F)); // <--- Esto hace que el reloj comience a trabajar
-    Wire.write(decToBcd(minute));
-    Wire.write(decToBcd(hour));
-    Wire.write(decToBcd(dayOfWeek));
-    Wire.write(decToBcd(dayOfMonth));
-    Wire.write(decToBcd(month));
-    Wire.write(decToBcd(year));
-
-    // Terminamos la escritura y verificamos si el DS1307 respondio
-    // Si la escritura se llevo a cabo el metodo endTransmission retorna 0
-    if (Wire.endTransmission() != 0)
-        return false;
-
-    // Retornar verdadero si se escribio con exito
-    return true;
-}
-
-// Lee el módulo RTC DS1307 (RELOJ)
-void readDS3231time(byte *second,
-                    byte *minute,
-                    byte *hour,
-                    byte *dayOfWeek,
-                    byte *dayOfMonth,
-                    byte *month,
-                    byte *year) {
-    Wire.beginTransmission(DS3231_I2C_ADDRESS);
-    Wire.write(0); // set DS3231 register pointer to 00h
-    Wire.endTransmission();
-    Wire.requestFrom(DS3231_I2C_ADDRESS, 7);
-    // request seven bytes of data from DS3231 starting from register 00h
-    *second = bcdToDec(Wire.read() & 0x7f);
-    *minute = bcdToDec(Wire.read());
-    *hour = bcdToDec(Wire.read() & 0x3f);
-    *dayOfWeek = bcdToDec(Wire.read());
-    *dayOfMonth = bcdToDec(Wire.read());
-    *month = bcdToDec(Wire.read());
-    *year = bcdToDec(Wire.read());
-}
-
-// Muestra datos por consola del módulo RTC DS1307 (RELOJ)
-void readClock(){
-    byte second, minute, hour, dayOfWeek, dayOfMonth, month, year;
-    // retrieve data from DS3231
-    readDS3231time(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month,
-    &year);
-    // send it to the serial monitor
-    Serial.print(hour, DEC);
-    // convert the byte variable to a decimal number when displayed
-    Serial.print(":");
-    if (minute<10){
-        Serial.print("0");
+    if (DEBUG || DEBUG_HOT_MODE)
+    {
+        Serial.println(message);
     }
-    Serial.print(minute, DEC);
-    Serial.print(":");
-    if (second<10){
-        Serial.print("0");
-    }
-    Serial.print(second, DEC);
-    Serial.print(" ");
-    Serial.print(dayOfMonth, DEC);
-    Serial.print("/");
-    Serial.print(month, DEC);
-    Serial.print("/");
-    Serial.print(year, DEC);
-    Serial.print(" Día de la semana: ");
-    switch(dayOfWeek){
-    case 1:
-        Serial.println("Domingo");
-        break;
-    case 2:
-        Serial.println("Lunes");
-        break;
-    case 3:
-        Serial.println("Martes");
-        break;
-    case 4:
-        Serial.println("Miércoles");
-        break;
-    case 5:
-        Serial.println("Jueves");
-        break;
-    case 6:
-        Serial.println("Viernes");
-        break;
-    case 7:
-        Serial.println("Sábado");
-        break;
-    }
-
-    Serial.println();
 }
 
 /*
  * Realiza la conexión al wifi en caso de no estar conectado.
  */
-void wifiConnect() {
-    if (upload_to_api && (WiFi.status() != WL_CONNECTED)) {
-        Serial.println("Conectando al WiFi..");
+void wifiConnect()
+{
+    if (DEBUG || DEBUG_HOT_MODE)
+    {
+        return;
+    }
+
+    if (upload_to_api && (WiFi.status() != WL_CONNECTED))
+    {
+        debug("Conectando al WiFi..");
+
         WiFi.begin(AP_NAME, AP_PASSWORD);
-        
+
         delay(500);
 
-        if(WiFi.status() == WL_CONNECTED) {
-            Serial.println("Se ha conectado al wifi correctamente..");
+        if (WiFi.status() == WL_CONNECTED)
+        {
+            debug("Se ha conectado al wifi correctamente..");
         }
     }
+
+    delay(2000);
 }
 
-void setup() {
+/**
+ * Activa todo el circuito de energía.
+ */
+void powerOn()
+{
+    delay(100);
+    digitalWrite(ENERGY, HIGH);
+    digitalWrite(ENERGY_HIGH, HIGH);
+    delay(100);
+    digitalWrite(LED_ON, HIGH);
+    delay(1000);
+}
+
+/**
+ * Desactiva todo el circuito de energía.
+ */
+void powerOff()
+{
+    delay(100);
+    digitalWrite(LED_ON, LOW);
+    delay(100);
+    digitalWrite(ENERGY, LOW);
+    digitalWrite(ENERGY_HIGH, LOW);
+    delay(1000);
+}
+
+void setup()
+{
     // Delay para prevenir posible cuelgue al despertar de hibernación.
     delay(500);
 
@@ -443,18 +174,42 @@ void setup() {
     Serial.begin(115200);
 
     // Establezco salida i2c personalizada.
-    Wire.begin( I2C_SDA_PIN, I2C_SCL_PIN );
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
-    display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
+    delay(100);
+
+    // Configuro pines digitales
+    pinMode(ENERGY, OUTPUT);
+    pinMode(ENERGY_HIGH, OUTPUT);
+    pinMode(LED_ON, OUTPUT);
+    pinMode(WATER_PUMP, OUTPUT);
+    pinMode(VAPORIZER, OUTPUT);
+    pinMode(SENSOR_WATER, INPUT);
+    pinMode(LED_NEED_WATER, OUTPUT);
+    pinMode(DEBUG_HOT_MODE_INIT_PIN, INPUT);
+
+    digitalWrite(ENERGY, HIGH);
+    digitalWrite(ENERGY_HIGH, HIGH);
+    digitalWrite(LED_ON, HIGH);
+    digitalWrite(LED_NEED_WATER, HIGH);
+    digitalWrite(WATER_PUMP, LOW);
+    digitalWrite(VAPORIZER, LOW);
+
+    delay(1000);
+
+    if (DISPLAY_ENABLED)
+    {
+        display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
+    }
 
     /*
-    * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4096).
+    * Set the resolution of analogRead return values. Default is 12 bits (range from 0 to 4095).
     * If between 9 and 12, it will equal the set hardware resolution, else value will be shifted.
     * Range is 1 - 16
     *
     * Note: compatibility with Arduino SAM
     */
-    //analogReadResolution(10);
+    analogReadResolution(12);
 
     /*
     * Sets the sample bits and read resolution
@@ -471,50 +226,34 @@ void setup() {
     //analogSetCycles(8);
 
     /*
-    * Set number of samples in the range.
-    * Default is 1
+    * Set number of samples in the range - Default is 1
     * Range is 1 - 255
-    * This setting splits the range into
-    * "samples" pieces, which could look
-    * like the sensitivity has been multiplied
-    * that many times
+    * This setting splits the range into "samples" pieces, which could look
+    * like the sensitivity has been multiplied that many times
     * */
-    //analogSetSamples(1);
+    //analogSetSamples(20);
 
     /*
-    * Set the divider for the ADC clock.
-    * Default is 1
+    * Set the divider for the ADC clock - Default is 1
     * Range is 1 - 255
-    * */
+    */
     //analogSetClockDiv(1);
 
     /*
-    * Set the attenuation for all channels
-    * Default is 11db
-    * */
+    * Set the attenuation for all channels - Default is 11db
+    */
     analogSetAttenuation(ADC_11db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
 
     /*
-    * Set the attenuation for particular pin
-    * Default is 11db
-    * */
+    * Set the attenuation for particular pin - Default is 11db
+    */
     //analogSetPinAttenuation(36, ADC_0db); //ADC_0db, ADC_2_5db, ADC_6db, ADC_11db
 
     // Establezco atenuación de 1,1v para los sensores chirp 1.2
-    //analogSetPinAttenuation(analog1Pin, ADC_0db);
-    //analogSetPinAttenuation(analog2Pin, ADC_0db);
-    //analogSetPinAttenuation(analog3Pin, ADC_0db);
+    //analogSetPinAttenuation(PIN_SOIL_MOISTURE_A0, ADC_0db);
 
     // Establezco atenuación para el resto de los sensores a 3,9v
     //analogSetPinAttenuation(analog4Pin, ADC_11db);
-    //analogSetPinAttenuation(analog5Pin, ADC_11db);
-    //analogSetPinAttenuation(analog6Pin, ADC_11db);
-
-    /*
-    * Get value for HALL sensor (without LNA)
-    * connected to pins 36(SVP) and 39(SVN)
-    * */
-    //hallRead();
 
     /*
     * Non-Blocking API (almost)
@@ -528,22 +267,15 @@ void setup() {
     /*
     * Attach pin to ADC (will also clear any other analog mode that could be on)
     * */
-    adcAttachPin(analog1Pin);
-    adcAttachPin(analog2Pin);
-    adcAttachPin(analog3Pin);
-    adcAttachPin(analog4Pin);
-    adcAttachPin(analog5Pin);
-    adcAttachPin(analog6Pin);
+    adcAttachPin(PIN_SOIL_MOISTURE_A0);
+    adcAttachPin(PIN_SOIL_MOISTURE_A1);
+    adcAttachPin(PIN_SOIL_MOISTURE_A2);
+    adcAttachPin(PIN_SOIL_MOISTURE_A3);
 
     /*
     * Start ADC conversion on attached pin's bus
     * */
-    //adcStart(analog1Pin);
-    //adcStart(analog2Pin);
-    //adcStart(analog3Pin);
-    //adcStart(analog4Pin);
-    //adcStart(analog5Pin);
-    //adcStart(analog6Pin);
+    //adcStart(PIN_SOIL_MOISTURE_A0);
 
     /*
     * Check if conversion on the pin's ADC bus is currently running
@@ -573,106 +305,148 @@ void setup() {
 
     // Conectando al wifi
     wifiConnect();
-    
-    delay(1000);
-    /*
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.println("Conectando al WiFi..");
-    }
-
-    Serial.println("Conectado al Wifi con éxito");
-    */
-
-    // Configuro pines digitales
-    pinMode(WATER_PUMP, OUTPUT);
-    pinMode(VAPORIZER, OUTPUT);
-
-    delay(300);
-
-    // Inicializo la lectura del sensor DHT11
-    dht.begin();
 
     // Inicializo la lectura del sensor VEML6070
-    uv.begin(VEML6070_1_T);
+    if (VEML6070_ENABLED)
+    {
+        debug("Inicializando sensor UV VEML6070");
+        uv.begin(VEML6070_1_T);
+
+        delay(300);
+    }
+
+    // Inicializo pantalla oled ssd1306 - Address 0x3D for 128x64
+    if (DISPLAY_ENABLED)
+    {
+        debug("Inicializando pantalla SSD1306");
+
+        while (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+        {
+            debug("SSD1306 allocation failed");
+            delay(10000);
+        }
+
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(23, 0);
+        display.cp437(true); // Para activar carácteres raros en ASCII https://elcodigoascii.com.ar/
+        display.drawBitmap(0, 0, logo3, 128, 64, 1);
+        display.display();
+
+        delay(1000);
+    }
+
+    // Inicializo la lectura del sensor BME280
+    if (BME_ENABLED && !bme.begin(BME_ADDRESS))
+    {
+        if (DISPLAY_ENABLED)
+        {
+            display.clearDisplay();
+            display.setTextSize(1);
+            display.setTextColor(SSD1306_WHITE);
+            display.setCursor(23, 0);
+            display.println("BME280 ERROR!!!");
+            display.display();
+        }
+
+        debug("Could not find a valid BME280 sensor, check wiring or try a different address!");
+
+        delay(5000);
+
+        while (!bme.begin(BME_ADDRESS))
+        {
+            debug("Intenando conectar al Sensor BME");
+            delay(10000);
+        }
+    }
 
     delay(300);
+}
 
-    // Inicializo pantalla oled ssd1306
-    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
-        Serial.println(F("SSD1306 allocation failed"));
-        for(;;); // Don't proceed, loop forever
+/**
+ * Calcula el porcentaje de humedad en la tierra.
+ * A partir del umbral de resistencia máximo y mínimo, tomo estos como 
+ * valores de referencia para calcular el porcentaje de agua que hay en la
+ * tierra y devuelvo el porcentaje relativo dentro del rango de trabajo.
+ * En seco, el sensor capacitivo puede rondar los 2000 de mínimo (no llega a 0)
+ */
+int calcSoilMoisture(int res)
+{
+    int max = THRESHOLD_SOIL_MOISURE_MAX; // Max resistencia es 4095
+    int min = THRESHOLD_SOIL_MOISURE_MIN;
+
+    int diff = (max - min);
+    int prop = (diff / 100);
+    int calc = 100 - ((res - min) / prop);
+
+    if ((res <= min) || (calc >= 100))
+    {
+        return 100;
     }
-    display.clearDisplay();
-    display.cp437(true);  // Para activar carácteres raros en ASCII https://elcodigoascii.com.ar/
 
-    // Show initial display buffer contents on the screen --
-    // the library initializes this with an Adafruit splash screen.
-    //display.display();
-    //delay(2000);
-    // display.display() is NOT necessary after every single drawing command,
-    // unless that's what you want...rather, you can batch up a bunch of
-    // drawing operations and then update the screen all at once by calling
-    // display.display(). These examples demonstrate both approaches...
+    if ((res >= max) || (calc <= 0))
+    {
+        return 0;
+    }
 
-
-    // RTC DS1307 (RELOJ)
-    // Setea valores del reloj: DS1307 seconds, minutes, hours, day, date, month, year
-    //setClock(00,39,20,5,7,8,20);
-    //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
-    delay(500);
+    return calc;
 }
 
 /**
  * Lee todos los sensores analógicos y los almacena.
  */
-void readAnalogicSensors() {
+void readAnalogicSensors()
+{
+
+    delay(3000);
+
     // Sensor para la humedad de la tierra.
-    analog1LastValue = analogRead(analog1Pin);
+    analog1LastValue = analogRead(PIN_SOIL_MOISTURE_A0);
+    soil_humidity_1 = calcSoilMoisture(analog1LastValue);
 
-    // Almaceno y compenso el porcentaje de humedad en la tierra
-    float tmp_soil_humidity = 100 - (analog1LastValue / (4095/100));
-    soil_humidity = tmp_soil_humidity > 0 ? tmp_soil_humidity : 0;
+    delay(1000);
 
-    delay(100);
-    
-    analog2LastValue = analogRead(analog2Pin);
+    analog2LastValue = analogRead(PIN_SOIL_MOISTURE_A1);
+    soil_humidity_2 = calcSoilMoisture(analog2LastValue);
 
-    delay(100);
-    //analog3LastValue = analogRead(analog3Pin);
-    //delay(100);
-    //analog4LastValue = analogRead(analog4Pin);
-    //delay(100);
-    //analog5LastValue = analogRead(analog5Pin);
-    //delay(100);
-    //analog6LastValue = analogRead(analog6Pin);
-    //delay(100);
+    delay(1000);
+
+    analog3LastValue = analogRead(PIN_SOIL_MOISTURE_A2);
+    soil_humidity_3 = calcSoilMoisture(analog3LastValue);
+
+    delay(1000);
+
+    analog4LastValue = analogRead(PIN_SOIL_MOISTURE_A3);
+    soil_humidity_4 = calcSoilMoisture(analog4LastValue);
+
+    delay(1000);
 }
 
 /**
  * Imprime los datos de las lecturas por serial.
  */
-void printResumeBySerial() {
+void printResumeBySerial()
+{
+    if (!DEBUG && !DEBUG_HOT_MODE)
+    {
+        return;
+    }
+
     Serial.println();
     Serial.println("----------------------");
-    Serial.print("Value Analog GPIO 36 → ");
+    Serial.print("Soil Moisure Analog 0 → ");
     Serial.println(analog1LastValue);
     delay(100);
-    Serial.print("Value Analog GPIO 39 → ");
+    Serial.print("Soil Moisure Analog 1 → ");
     Serial.println(analog2LastValue);
     delay(100);
-    Serial.print("Value Analog GPIO 34 → ");
+    Serial.print("Soil Moisure Analog 2 → ");
     Serial.println(analog3LastValue);
     delay(100);
-    Serial.print("Value Analog GPIO 35 → ");
+    Serial.print("Soil Moisure Analog 3 → ");
     Serial.println(analog4LastValue);
     delay(100);
-    Serial.print("Value Analog GPIO 32 → ");
-    Serial.println(analog5LastValue);
-    delay(100);
-    Serial.print("Value Analog GPIO 33 → ");
-    Serial.println(analog6LastValue);
 
     // Temperatura
     Serial.print(F("Temperature → "));
@@ -684,17 +458,32 @@ void printResumeBySerial() {
     Serial.print(humidity);
     Serial.println(F("% "));
 
+    // Presión Atmosférica
+    Serial.print(F("Pressure → "));
+    Serial.print(pressure);
+    Serial.println(F("b "));
+
     // Luz - UV
     Serial.print(F("UV → "));
     Serial.println(uv_quantity);
 
     // Porcentaje de humedad en tierra
-    Serial.print(F("Humedad en tierra → "));
-    Serial.println(soil_humidity);
+    Serial.print(F("Soil Moisure Porcent 0 → "));
+    Serial.println(soil_humidity_1);
+    Serial.print(F("Soil Moisure Porcent 1 → "));
+    Serial.println(soil_humidity_2);
+    Serial.print(F("Soil Moisure Porcent 2 → "));
+    Serial.println(soil_humidity_3);
 
-    if (WiFi.status() == WL_CONNECTED) {
+    Serial.print(F("Soil Moisure Porcent 3 → "));
+    Serial.println(soil_humidity_4);
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
         Serial.println("WLAN → ON");
-    } else {
+    }
+    else
+    {
         Serial.println("WLAN → OFF");
     }
 
@@ -717,69 +506,56 @@ void printResumeBySerial() {
 }
 
 /**
+ * Muestra por la pantalla animación para la lectura de datos.
+ */
+void displayShowAnimation()
+{
+    display.clearDisplay();
+    display.drawBitmap(0, 0, logo, 128, 64, 1);
+    display.display();
+
+    delay(150);
+
+    display.clearDisplay();
+    display.drawBitmap(0, 0, logo2, 128, 64, 1);
+    display.display();
+
+    delay(150);
+
+    display.clearDisplay();
+    display.drawBitmap(0, 0, logo3, 128, 64, 1);
+    display.display();
+
+    delay(150);
+}
+
+/**
  * Imprime los datos de las lecturas por la pantalla externa.
  */
-void printResumeByDisplay() {
-    Serial.println("Mostrando datos por la pantalla\n");
+void displayShowResume()
+{
+    if (!DISPLAY_ENABLED)
+    {
+        return;
+    }
 
-    // Limpio el buffer de la pantalla.
-    display.clearDisplay();
-
-    /*
-    display.setTextSize(1);                  // setTextSize applique est facteur d'échelle qui permet d'agrandir ou réduire la font
-    display.setTextColor(WHITE);             // La couleur du texte
-    display.setCursor(0,0);                  // On va écrire en x=0, y=0
-    display.println("Hello, world!");        // un println comme pour écrire sur le port série
-    display.setTextColor(BLACK, WHITE);      // On inverse les couleurs, le fond devient noir
-    display.println("Hello, world!");        // Vous pouvez changer à la volée de Font (pour cela vous devez la déclarer comme une librairie en début de projet, par exemple #include <Fonts/FreeMono9pt7b.h>)
-    //display.setFont(&FreeMono9pt7b);
-    display.setTextColor(WHITE);
-
-    display.println("Hello, world!");
-
-    //display.setFont();                      // Pour revenir à la Font par défaut
-
-    delay(4000); // Pause for 2 seconds
-    */
-
-    // Muestro logotipos como animación de carga
-    display.clearDisplay();
-    display.drawBitmap(0, 0,  logo, 128, 64, 1);
-    display.display();
-
-    delay(150);
-
-    display.clearDisplay();
-    display.drawBitmap(0, 0,  logo2, 128, 64, 1);
-    display.display();
-
-    delay(150);
-
-    display.clearDisplay();
-    display.drawBitmap(0, 0,  logo3, 128, 64, 1);
-    display.display();
-
-    delay(150);
+    debug("Mostrando datos por la pantalla");
 
     display.clearDisplay();
     display.setTextSize(1);
-    display.setTextColor(WHITE);
-    display.setCursor(23,0);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(23, 0);
     display.println("ULTIMA LECTURA");
 
     // Pines Analógicos
-    display.print("A36: ");
+    display.print("A0: ");
     display.print((int)analog1LastValue);
-    display.print(" | A39: ");
+    display.print(" | A1: ");
     display.println((int)analog2LastValue);
-    display.print("A34: ");
+    display.print("A2: ");
     display.print((int)analog3LastValue);
-    display.print(" | A35: ");
+    display.print(" | A3: ");
     display.println((int)analog4LastValue);
-    display.print("A32: ");
-    display.print((int)analog5LastValue);
-    display.print(" | A33: ");
-    display.println((int)analog6LastValue);
 
     // Temperatura
     display.print(F("Tem: "));
@@ -795,9 +571,12 @@ void printResumeByDisplay() {
     display.print(F("UV: "));
     display.print((int)uv_quantity);
 
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED)
+    {
         display.println(" WLAN: ON");
-    } else {
+    }
+    else
+    {
         display.println(" WLAN: OFF");
     }
 
@@ -809,7 +588,8 @@ void printResumeByDisplay() {
     display.print(F(" Vap: "));
     display.println(vaporizer_status ? "on" : "off");
 
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED)
+    {
         display.print("IP: ");
         display.println(WiFi.localIP());
     }
@@ -817,30 +597,49 @@ void printResumeByDisplay() {
     display.display();
 }
 
-bool uploadDataToApi() {
-    // Compruebo si está conectado a la red antes de iniciar la subida.
-    if (WiFi.status() == WL_CONNECTED) {
+/**
+ * Recibe un porcentaje de humedad en tierra y devuelve si está por encima
+ * del umbral de humedad mínimo declarado para el suelo.
+ */
+bool getSoilMoistureNeedWater(float soil_humidity)
+{
+    return bool(soil_humidity < THRESHOLD_MIN_SOIL_MOISTURE_HUMIDITY);
+}
+
+void uploadDataToApi(String PLANT_ID, float soilMoisureRaw, int soilPorcent)
+{
+    wifiConnect();
+
+    if (!PLANT_ID || PLANT_ID == "")
+    {
+        Serial.println("No se ha configurado: " + PLANT_ID);
+    }
+    else if (WiFi.status() == WL_CONNECTED)
+    {
         Serial.println("Iniciando subida a la API");
         HTTPClient http;
 
         // Parámetros a enviar
-        //char params = '[{"smartbonsai_plant_id":1,"uv": 4, "temperature": "26", "humidity": 58, "soil_humidity":71,"full_water_tank": true, "waterpump_enabled": false, "vaporizer_enabled": false}]';
-        String params = "data=[{\"smartbonsai_plant_id\":" + (String)PLANT_ID +
-            ",\"uv\":" + (String)uv_quantity + 
-            ",\"temperature\":" + (String)temperature + 
-            ",\"humidity\":" + (String)humidity + 
-            ",\"soil_humidity\":" + (String)soil_humidity + 
-            ",\"full_water_tank\":" + (String)full_water_tank + 
-            ",\"waterpump_enabled\":" + (String)waterPump_status + 
-            ",\"vaporizer_enabled\":" + (String)vaporizer_status + 
-            "}]";
+        String params = "{\"plant_id\":" + PLANT_ID +
+                        ",\"hardware_device_id\":" + (String)DEVICE_ID +
+                        ",\"pressure\":" + (String)pressure +
+                        ",\"uv\":" + (String)uv_quantity +
+                        ",\"temperature\":" + (String)temperature +
+                        ",\"humidity\":" + (String)humidity +
+                        ",\"soil_humidity_raw\":" + (String)soilMoisureRaw +
+                        ",\"soil_humidity\":" + (String)soilPorcent +
+                        ",\"full_water_tank\":" + (String)full_water_tank +
+                        ",\"waterpump_enabled\":" + (String)waterPump_status +
+                        ",\"vaporizer_enabled\":" + (String)vaporizer_status +
+                        ",\"need_water\":" + getSoilMoistureNeedWater(float(soilPorcent)) +
+                        "}";
 
-        Serial.print("Parámetros json: ");
-        Serial.println(params);
-        
+        debug("Parámetros json: ");
+        debug(params);
+
         //http.begin("https://api.fryntiz.dev/smartplant/register/add-json");
-        http.begin((String)API_DOMAIN + ":" +(String)API_PORT + "/" + (String)API_PATH);
-        http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+        http.begin((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
+        http.addHeader("Content-Type", "application/json");
         http.addHeader("Authorization", API_TOKEN_BEARER);
         http.addHeader("Accept", "*/*");
 
@@ -850,66 +649,129 @@ bool uploadDataToApi() {
         // Respuesta de la API
         auto response = http.getString();
 
-        Serial.print("Stream:");
-        Serial.println(http.getStream());
-        Serial.print("Response:");
-        Serial.println(response);
+        debug("Stream:");
 
-        Serial.print("Código de respuesta de la API: ");
-        Serial.println(httpCode);
+        if (DEBUG || DEBUG_HOT_MODE)
+        {
+            Serial.println(http.getStream());
 
-        Serial.print("Ruta de la api: ");
-        Serial.print((String)API_DOMAIN + ":" +(String)API_PORT + "/" + (String)API_PATH);
+            debug("Response:");
+            Serial.println(response);
+
+            debug("Código de respuesta de la API: ");
+            Serial.println(httpCode);
+        }
+
+        debug("Ruta de la api: ");
+        debug((String)API_DOMAIN + ":" + (String)API_PORT + "/" + (String)API_PATH);
 
         // Indica que ha terminado de transmitirse el post.
         http.end();
-
-        return true;
-    } else {
-        Serial.println("No se ha conectado al WIFI, no se inicia la subida a la API");
+    }
+    else
+    {
+        debug("No se ha conectado al WIFI, no se inicia la subida a la API");
     }
 
-    return false;
+    delay(300);
+}
+
+/**
+ * Comprueba si se detecta agua.
+ */
+bool getWaterTank()
+{
+    full_water_tank = digitalRead(SENSOR_WATER);
+
+    return bool(full_water_tank);
 }
 
 /**
  * Enciende el motor de riego solo cuando el sensor no detecta humedad.
  */
-void waterPump() {
-    // Enciende el motor cuando la humedad del suelo es menor al 35%
-    if (soil_humidity < 35) {
-        digitalWrite(WATER_PUMP, HIGH);
-        Serial.println("Encendiendo motor de riego");
-        waterPump_status = true;
+void waterPump()
+{
+    // Compruebo tanque de agua.
+    getWaterTank();
 
-        // Motor de riego durante 4 segundos y se detiene.
-        delay(4000);
-        digitalWrite(WATER_PUMP, LOW);
-        Serial.println("Apagando motor de riego");
-    } else {
-        digitalWrite(WATER_PUMP, LOW);
+    // Enciende el motor cuando la humedad del suelo es menor al 35%
+    if (getSoilMoistureNeedWater(soil_humidity_1))
+    {
+
+        // Enciendo led indicando que necesita agua
+        need_water = true;
+        digitalWrite(LED_NEED_WATER, HIGH);
+
+        // Compruebo si hay agua para poder regar.
+        if (full_water_tank)
+        {
+            delay(100);
+
+            digitalWrite(WATER_PUMP, HIGH);
+            Serial.println("Encendiendo motor de riego");
+            waterPump_status = true;
+
+            // Motor de riego durante 4 segundos y se detiene.
+            delay(DURATION_MOTOR_WATER);
+            digitalWrite(WATER_PUMP, LOW);
+            Serial.println("Apagando motor de riego");
+
+            // Apago led indicando que necesita agua
+            need_water = false;
+            digitalWrite(LED_NEED_WATER, LOW);
+        }
+        else
+        {
+            Serial.println("No se riega, no se detecta agua");
+            digitalWrite(WATER_PUMP, LOW);
+            waterPump_status = false;
+        }
+    }
+    else
+    {
         Serial.println("Motor de riego apagado");
+        digitalWrite(WATER_PUMP, LOW);
         waterPump_status = false;
+
+        // Apago led indicando que necesita agua
+        need_water = false;
+        digitalWrite(LED_NEED_WATER, LOW);
     }
 }
 
 /**
  * Enciende el vaporizador de agua cuando se dan las condiciones necesarias.
  */
-void vaporizer() {
-    // Enciende el vaporizador cuando la humedad es menor al 60% y la temperatura de 30ºC
-    if ((humidity < 60) && (temperature < 30)) {
-        delay(100);
-        Serial.println("El vaporizador está encendido");
-        digitalWrite(VAPORIZER, HIGH);
-        vaporizer_status = true;
-        
-        // Vaporizador durante 10 segundos y se detiene.
-        delay(10000);
-        digitalWrite(VAPORIZER, LOW);
-        Serial.println("Apagando vaporizador");
-    } else {
-        delay(100);
+void vaporizer()
+{
+    // Compruebo tanque de agua.
+    getWaterTank();
+
+    // Enciende el vaporizador cuando la humedad y temperatura no sobrepasan el umbral predefinido.
+    if ((humidity < THRESHOLD_VAPORIZER_AIR_HUMIDITY) && (temperature < THRESHOLD_VAPORIZER_TEMPERATURE))
+    {
+        // Compruebo si hay agua para poder regar.
+        if (full_water_tank)
+        {
+            delay(100);
+            Serial.println("El vaporizador está encendido");
+            digitalWrite(VAPORIZER, HIGH);
+            vaporizer_status = true;
+
+            // Vaporizador durante 10 segundos y se detiene.
+            delay(10000);
+            digitalWrite(VAPORIZER, LOW);
+            Serial.println("Apagando vaporizador");
+        }
+        else
+        {
+            digitalWrite(VAPORIZER, LOW);
+            vaporizer_status = false;
+            Serial.println("No se vaporiza, no se detecta agua");
+        }
+    }
+    else
+    {
         Serial.println("El vaporizador está apagado");
         digitalWrite(VAPORIZER, LOW);
         vaporizer_status = false;
@@ -917,134 +779,229 @@ void vaporizer() {
 }
 
 /**
- * Obtiene la temperatura del sensor DHT11y la asocia en la variable.
+ * Obtiene la temperatura del sensor BME280 y la asocia en la variable.
  */
-void readTemperature() {
-  delay(250);
-  float get_temperature = dht.readTemperature();
+void readTemperature()
+{
+    if (!BME_ENABLED)
+    {
+        return;
+    }
 
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(get_temperature)) {
-    Serial.println(F("Fallo al leer temperatura del sensor DHT11!"));
-    return;
-  }
+    delay(250);
 
-  temperature = get_temperature;
+    float get_temperature = bme.readTemperature();
+
+    // Check if any reads failed and exit early (to try again).
+    if (isnan(get_temperature))
+    {
+        Serial.println(F("Fallo al leer temperatura del sensor BME280!"));
+        return;
+    }
+
+    temperature = get_temperature;
 }
 
 /**
- * Obtiene la humedad del sensor DHT11 y la asocia en la variable.
+ * Obtiene la humedad del sensor BME280 y la asocia en la variable.
  */
-void readHumidity() {
-  delay(250);
-
-  float get_humidity = dht.readHumidity();
-
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(get_humidity)) {
-    Serial.println(F("Fallo al leer humedad del sensor DHT11!"));
-    return;
-  }
-
-  humidity = get_humidity;
-}
-
-void readLight() {
-  Serial.print("UV light level: ");
-  Serial.println(uv.readUV());
-  uv_quantity = uv.readUV();
-}
-
-void scanI2cSensors() {
-  byte error, address;
-  int nDevices;
-  Serial.println("Scanning...");
-  nDevices = 0;
-  for(address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    if (error == 0) {
-      Serial.print("I2C device found at address 0x");
-      if (address<16) {
-        Serial.print("0");
-      }
-      Serial.println(address,HEX);
-      nDevices++;
+void readHumidity()
+{
+    if (!BME_ENABLED)
+    {
+        return;
     }
-    else if (error==4) {
-      Serial.print("Unknow error at address 0x");
-      if (address<16) {
-        Serial.print("0");
-      }
-      Serial.println(address,HEX);
+
+    delay(250);
+
+    float get_humidity = bme.readHumidity();
+
+    // Check if any reads failed and exit early (to try again).
+    if (isnan(get_humidity))
+    {
+        Serial.println(F("Fallo al leer humedad del sensor BME280!"));
+        return;
     }
-  }
-  if (nDevices == 0) {
-    Serial.println("No I2C devices found\n");
-  }
-  else {
-    Serial.println("done\n");
-  }
-  delay(2000);
+
+    humidity = get_humidity;
 }
 
-void loop() {
-    delay(2000);
+/**
+ * Obtiene la presión del sensor BME280 y la asocia en la variable.
+ */
+void readPressure()
+{
+    if (!BME_ENABLED)
+    {
+        return;
+    }
 
-    Serial.println("");
-    Serial.println("---------------------------------------");
-    Serial.println("Comienza el loop");
-    
-    // Compruebo si está conectado a la red Wireless
-    wifiConnect();
+    delay(250);
 
-    // Leo y almaceno timestamp de la lectura actual
-    //readClock();
+    float get_pressure = bme.readPressure() / 100;
 
+    // Check if any reads failed and exit early (to try again).
+    if (isnan(get_pressure))
+    {
+        Serial.println(F("Fallo al leer presión del sensor BME280!"));
+        return;
+    }
+
+    pressure = get_pressure;
+}
+
+/**
+ * Obtiene el índice UV desde el sensor VEML6070
+ */
+void readLight()
+{
+    if (!VEML6070_ENABLED)
+    {
+        if (DEBUG || DEBUG_HOT_MODE)
+        {
+            Serial.println(F("No está habilitado el sensor VEML6070!"));
+        }
+
+        return;
+    }
+
+    float get_uv = uv.readUV();
+
+    // Check if any reads failed and exit early (to try again).
+    if (isnan(get_uv))
+    {
+        if (DEBUG || DEBUG_HOT_MODE)
+        {
+            Serial.println(F("Fallo al leer luz del sensor VEML6070!"));
+        }
+
+        return;
+    }
+
+    uv_quantity = get_uv;
+}
+
+void readAllSensors()
+{
     // Leo todos los pines analógicos.
     readAnalogicSensors();
 
-    // Leo pines digitales
+    // Leo sensores por i2c
     readTemperature();
     readHumidity();
+    readPressure();
     readLight();
 
-    // Compruebo si necesita regar.
-    waterPump();
+    // Compruebo tanque de agua.
+    getWaterTank();
 
-    // Compruebo si necesita encender el vaporizador.
-    vaporizer();
+    need_water = getSoilMoistureNeedWater(soil_humidity_1);
+}
 
-    // Muestro los datos por Serial.
-    printResumeBySerial();
-
-    // Muestro los datos por pantalla.
-    printResumeByDisplay();
-
-    // Subo los datos a la API
-    if (upload_to_api) {
-        uploadDataToApi();
+void loop()
+{
+    // Comprobando si se ha pulsado iniciar en modo debug
+    if (digitalRead(DEBUG_HOT_MODE_INIT_PIN))
+    {
+        DEBUG_HOT_MODE = true;
     }
 
-    // DEBUG
-    //scanI2cSensors();
+    // Enciendo todo el circuito de corriente.
+    powerOn();
+
+    delay(2000);
+
+    if (need_water)
+    {
+        digitalWrite(LED_NEED_WATER, HIGH);
+    }
+
+    debug("");
+    debug("---------------------------------------");
+    debug("Comienza el loop");
+
+    // Compruebo si está conectado a la red Wireless
+    wifiConnect();
+
+    // Muestra animación indicando que se leerán los datos.
+    displayShowAnimation();
+
+    // Lee todos los sensores.
+    readAllSensors();
+
+    // Muestra resumen de las lecturas por pantalla.
+    displayShowResume();
+
+    // Riega si es necesario.
+    waterPump();
+
+    // Muestro los datos por pantalla.
+    displayShowResume();
+
+    // Vaporiza si es necesario.
+    vaporizer();
+
+    // Muestro los datos por pantalla.
+    displayShowResume();
+
+    // Subo los datos a la API
+    if (upload_to_api && !DEBUG && !DEBUG_HOT_MODE)
+    {
+        delay(300);
+        uploadDataToApi((String)PLANT_ID_1, analog1LastValue, soil_humidity_1);
+        uploadDataToApi((String)PLANT_ID_2, analog2LastValue, soil_humidity_2);
+        uploadDataToApi((String)PLANT_ID_3, analog3LastValue, soil_humidity_3);
+        uploadDataToApi((String)PLANT_ID_4, analog4LastValue, soil_humidity_4);
+    }
+
+    // Habilito y establezco hibernación para ahorrar baterías.
+    bootCount = bootCount + 1;
+
+    // Muestra animación indicando que se leerán los datos.
+    displayShowAnimation();
+
+    // Leo de nuevo los sensores tras los eventos anteriores.
+    readAllSensors();
+
+    // Muestro los datos por pantalla.
+    displayShowResume();
+
+    // Muestro los datos por Serial si está en modo DEBUG o DEBUG_HOT_MODE.
+    printResumeBySerial();
+
+    debug("Termina el loop");
+    debug("---------------------------------------");
+    debug("");
+    debug("Contador de veces despierto: ");
+
+    if (DEBUG || DEBUG_HOT_MODE)
+    {
+        Serial.print(bootCount);
+    }
 
     // Reestablezco marcas de riego.
     waterPump_status = false;
     vaporizer_status = false;
+    full_water_tank = false;
 
-    // TODO → Refactorizar e hibernar el ESP32 unos 30 minutos en cada iteración.
-    // Pausa entre lecturas
+    if (need_water)
+    {
+        digitalWrite(LED_NEED_WATER, HIGH);
+    }
 
-    Serial.println("Termina el loop");
-    Serial.println("---------------------------------------");
-    Serial.println("");
+    delay(2000);
 
-    // Habilito y establezco hibernación para ahorrar baterías.
-    bootCount = bootCount+1;
-    Serial.print("Contador de veces despierto: ");
-    Serial.println(bootCount);
-    delay(500);
-    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-    esp_deep_sleep_start();
+    if (DEBUG || DEBUG_HOT_MODE)
+    {
+        delay(5000);
+    }
+    else
+    {
+        // Apago todo el circuito de corriente.
+        powerOff();
+
+        // Duerme el ESP32 durante el tiempo establecido
+        esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+        esp_deep_sleep_start();
+    }
 }

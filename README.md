@@ -1,6 +1,12 @@
 # esp32-smart-bonsai
 
-Proyecto para automatizar el cuidado básico de un bonsai controlando humedad ambiente, humedad en la tierra, riego y luz recibida.
+Proyecto para controlar el cuidado de varias plantas.
+
+Controla la humedad del ambiente, humedad en tierra de cada planta, el riego y la luz recibida.
+
+Se tomará en cuenta para regar o humidificar el ambiente los parámetros registrados en las plantas.
+
+Actualmente solo contempla 1 planta, pero se prepara el código para en el futuro facilitar controlar más.
 
 ## Dependencias platformio
 
@@ -8,8 +14,10 @@ Las siguientes dependencias son necesarias para poder compilar el proyecto
 
 - Adafruit_SSD1306
 - Adafruit_VEML6070
-- DHT11
 - ArduinoJson
+- Adafruit_BME280
+
+Si la instalamos desde platformio, sería suficiente con abrir el proyecto ahí ya que están definidas en el archivo platformio.ini precisamente para evitar este inconveniente de lidiar con dependencias.
 
 ## Entorno de variables para WIFI y API
 
@@ -24,17 +32,16 @@ archivo de ejemplo actualmente.
 
 ## Hardware utilizado
 
-- ESP32 Lite, versión reducida con gestión de carga para batería en puerto integrado.
-- Módulo para reloj en tiempo real → DS1307 Tiny RTC (Como subo los datos en
-  el momento y para ahorrar gastos además de energía, marco la hora tras subir
-  así que finalmente no es usado, queda opcional)
+- ESP32 Lite Lolin32, versión reducida con gestión de carga para batería en puerto integrado.
 - Pantalla LCD → SSD1306
 - Sensor UV → VEML6070
-- Módulo para relés
-- Sensor de temperatura y humedad → DHT11
-- Sensor analógico genérico para humedad
+- Sensor de temperatura, humedad ambiente y presión → Bosh BME280
+- 2 Módulo para relés protegidos, uno para la bomba de agua y otro para el vaporizador de agua.
+- 2 Módulos mofset para alimentar circuito de 5v y 3v.
 - Sensor analógico para tierra con anticorrosión: Capacitive Soil Moisture Sensor v1.2
-- Batería de movil 2,6Ah 3,7v de lition (Sony Xperia Z3 Compact)
+- Batería de teléfono, tablet o cualquiera de lition 3,7v y más de 2 amperios.
+- Interruptor cisterna para el tanque de agua. Se puede puentear si no se quiere utilizar.
+- Vaporizador de agua.
 
 ## Esquemas de Pines
 
@@ -42,14 +49,18 @@ El siguiente esquema de pines es el que utilizo por defecto para el smart bonsai
 
 ### Pines analógicos
 
-- 36 → Sensor principal de humedad en tierra
-- 39 → Sensor secundario de humedad en tierra
+- 36 → Sensor de humedad en tierra (En la versión actual, solo se utiliza este)
+- 39 → Sensor de humedad en tierra (No usado, planteado para futuro)
+- 35 → Sensor de humedad en tierra (No usado, planteado para futuro)
+- 32 → Sensor de humedad en tierra (No usado, planteado para futuro)
 
 ## Pines digitales
 
-- 18 → Sensor DHT11
-- 13 → Bomba de agua
-- 15 → Vaporizador
+- 22 → Indicador LED para mostrar que está trabajando en lecturas.
+- 18 → Bomba de agua.
+- 5 → Vaporizador.
+- 17 → Alimentación del circuito.
+- 16 → Sensor para el tanque de agua
 
 ### Pines para i2c
 
